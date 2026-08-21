@@ -1,0 +1,6 @@
+{
+  "name": "SIJAKA",
+  "description": "Sistem Informasi Jaminan Kematian - Jamaah Tahlil Ar Rohman RT 06, RT 07, RT 10 Perum GPA Ngijo",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
