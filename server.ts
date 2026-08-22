@@ -69,6 +69,172 @@ async function startServer() {
   });
 
   // ------------------------------------------
+  // PUBLIC / UNPROTECTED ROUTES (NO AUTH NEEDED)
+  // ------------------------------------------
+
+  // Public Dashboard Aggregated Metrics (Safe, No Private PII)
+  app.get('/api/public/dashboard', async (_req: Request, res: Response) => {
+    try {
+      const allMembers = await getAllMembers();
+      const allFamilies = await getAllFamilies();
+      const allContributions = await getAllContributions();
+      const settings = await getParsedSettings();
+      const arrearsData = await calculateAllMembersArrears();
+
+      const totalKK = allMembers.length;
+      const kkAktif = allMembers.filter((m) => m.Status === 'Aktif').length;
+      const activeFamiliesCount = allFamilies.filter((f) => f.Status === 'Aktif').length;
+      const keluargaTerlindungi = kkAktif + activeFamiliesCount;
+
+      const rt06 = allMembers.filter((m) => m.RT === '06').length;
+      const rt07 = allMembers.filter((m) => m.RT === '07').length;
+      const rt10 = allMembers.filter((m) => m.RT === '10').length;
+
+      const saldoKas = allContributions.reduce((sum, c) => sum + (Number(c.Nominal) || 0), 0);
+      const persentaseKepatuhan =
+        arrearsData.summary.totalAnggotaAktif > 0
+          ? Math.round(
+              (arrearsData.summary.jumlahSudahBayarBulanIni / arrearsData.summary.totalAnggotaAktif) * 100
+            )
+          : 0;
+
+      res.json({
+        success: true,
+        data: {
+          totalKK,
+          kkAktif,
+          keluargaTerlindungi,
+          pembayaranBulanIni: arrearsData.summary.jumlahSudahBayarBulanIni,
+          belumBayarBulanIni: arrearsData.summary.jumlahBelumBayarBulanIni,
+          persentaseKepatuhan,
+          totalPemasukanBulanIni: arrearsData.summary.totalIuranTerkumpulBulanIni,
+          totalPengeluaranBulanIni: 0,
+          saldoKas,
+          distribusiRT: {
+            rt06,
+            rt07,
+            rt10,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching public dashboard:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat data dashboard publik.' });
+    }
+  });
+
+  // Public KK & Family Registration Endpoint
+  app.post('/api/public/daftar-kk', async (req: Request, res: Response) => {
+    try {
+      const { kepalaKeluarga, anggotaKeluarga } = req.body;
+
+      if (!kepalaKeluarga) {
+        res.status(400).json({ success: false, message: 'Data Kepala Keluarga wajib diisi.' });
+        return;
+      }
+
+      const { No_KK, NIK, Nama, Tempat_Lahir, Tanggal_Lahir, Alamat, RT, No_HP } = kepalaKeluarga;
+
+      if (!No_KK || !NIK || !Nama || !Tempat_Lahir || !Tanggal_Lahir || !Alamat || !RT || !No_HP) {
+        res.status(400).json({
+          success: false,
+          message: 'Semua kolom data Kepala Keluarga wajib diisi lengkap.',
+        });
+        return;
+      }
+
+      if (NIK.trim().length !== 16) {
+        res.status(400).json({ success: false, message: 'NIK Kepala Keluarga harus 16 digit angka.' });
+        return;
+      }
+
+      if (No_KK.trim().length !== 16) {
+        res.status(400).json({ success: false, message: 'Nomor KK harus 16 digit angka.' });
+        return;
+      }
+
+      // Check duplicate NIK or No_KK
+      const allMembers = await getAllMembers();
+      if (allMembers.some((m) => m.NIK === NIK.trim())) {
+        res.status(400).json({
+          success: false,
+          message: 'NIK Kepala Keluarga sudah terdaftar di SIJAKA. Silakan hubungi pengurus RT.',
+        });
+        return;
+      }
+
+      if (allMembers.some((m) => m.No_KK === No_KK.trim())) {
+        res.status(400).json({
+          success: false,
+          message: 'Nomor Kartu Keluarga (KK) sudah terdaftar di SIJAKA. Satu KK dihitung 1 kepesertaan.',
+        });
+        return;
+      }
+
+      // Create primary member (Kepala Keluarga)
+      const newMember = await createMember({
+        No_KK: No_KK.trim(),
+        NIK: NIK.trim(),
+        Nama: Nama.trim(),
+        Tempat_Lahir: Tempat_Lahir.trim(),
+        Tanggal_Lahir,
+        Alamat: Alamat.trim(),
+        RT,
+        No_HP: No_HP.trim(),
+        Status: 'Aktif',
+        Tanggal_Daftar: new Date().toISOString().split('T')[0],
+        Keterangan: 'Pendaftaran Mandiri KK Warga (Publik)',
+      });
+
+      // Create Family members if provided
+      let registeredFamilyCount = 0;
+      if (Array.isArray(anggotaKeluarga) && anggotaKeluarga.length > 0) {
+        for (const fam of anggotaKeluarga) {
+          if (fam.Nama && fam.Nama.trim()) {
+            await createFamily({
+              ID_Anggota: newMember.ID_Anggota,
+              NIK: fam.NIK ? fam.NIK.trim() : undefined,
+              Nama: fam.Nama.trim(),
+              Tempat_Lahir: fam.Tempat_Lahir ? fam.Tempat_Lahir.trim() : undefined,
+              Tanggal_Lahir: fam.Tanggal_Lahir || undefined,
+              Hubungan: fam.Hubungan || 'Anak',
+              No_HP: fam.No_HP ? fam.No_HP.trim() : undefined,
+              Status: 'Aktif',
+              Calon_Ahli_Waris: fam.Calon_Ahli_Waris === 'Ya' ? 'Ya' : 'Tidak',
+              Keterangan: 'Pendaftaran Bersama KK',
+            });
+            registeredFamilyCount++;
+          }
+        }
+      }
+
+      // Create Audit Log
+      await createActivityLog({
+        ID_User: 'PUBLIC_GUEST',
+        Nama_User: 'Warga Mandiri',
+        Aksi: 'CREATE',
+        Modul: 'ANGGOTA',
+        Record_ID: newMember.ID_Anggota,
+        Deskripsi: `Pendaftaran Mandiri KK baru: ${newMember.Nama} (ID: ${newMember.ID_Anggota}) dengan ${registeredFamilyCount} anggota keluarga di RT ${newMember.RT}`,
+        Status: 'SUCCESS',
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Pendaftaran KK berhasil dikirim! ID Peserta ${newMember.ID_Anggota} telah diterbitkan dengan total ${1 + registeredFamilyCount} jiwa terlindungi.`,
+        data: {
+          idAnggota: newMember.ID_Anggota,
+          nama: newMember.Nama,
+          totalJiwa: 1 + registeredFamilyCount,
+        },
+      });
+    } catch (error: any) {
+      console.error('Error public register KK:', error);
+      res.status(500).json({ success: false, message: error.message || 'Gagal mendaftarkan KK.' });
+    }
+  });
+
+  // ------------------------------------------
   // AUTH ROUTES
   // ------------------------------------------
 

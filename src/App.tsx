@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ToastProvider } from './context/ToastContext.tsx';
 import { LoginView } from './components/auth/LoginView.tsx';
+import { PublicDashboardView } from './components/public/PublicDashboardView.tsx';
 import { AppLayout } from './components/layout/AppLayout.tsx';
 import { ActiveTab } from './components/layout/Sidebar.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
@@ -24,6 +25,7 @@ import { api } from './lib/api.ts';
 
 function MainApp() {
   const { user, isLoading } = useAuth();
+  const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [sheetsConfigured, setSheetsConfigured] = useState(false);
@@ -62,9 +64,20 @@ function MainApp() {
     );
   }
 
-  // Not logged in -> Show Login View
+  // Not logged in -> Show Public Dashboard by default, or Login View if clicked
   if (!user) {
-    return <LoginView onLoginSuccess={() => setActiveTab('dashboard')} />;
+    if (showLoginScreen) {
+      return (
+        <LoginView
+          onLoginSuccess={() => {
+            setShowLoginScreen(false);
+            setActiveTab('dashboard');
+          }}
+          onBackToPublic={() => setShowLoginScreen(false)}
+        />
+      );
+    }
+    return <PublicDashboardView onOpenLogin={() => setShowLoginScreen(true)} />;
   }
 
   // Navigation handlers
@@ -93,6 +106,9 @@ function MainApp() {
     switch (activeTab) {
       case 'dashboard':
         return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
+
+      case 'public-preview':
+        return <PublicDashboardView onOpenLogin={() => {}} />;
 
       case 'anggota':
         return (

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Building2, Lock, User, ArrowRight, Shield, CheckCircle, AlertCircle } from 'lucide-react';
+import { Building2, Lock, User, ArrowRight, Shield, CheckCircle, AlertCircle, ArrowLeft, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
 
 interface LoginViewProps {
   onLoginSuccess?: () => void;
+  onBackToPublic?: () => void;
 }
 
-export function LoginView({ onLoginSuccess }: LoginViewProps) {
+export function LoginView({ onLoginSuccess, onBackToPublic }: LoginViewProps) {
   const { login, isLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +47,19 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
         {/* Brand Header */}
         <div className="text-center">
+          {onBackToPublic && (
+            <div className="mb-4 text-left">
+              <button
+                type="button"
+                onClick={onBackToPublic}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Kembali ke Dashboard Publik</span>
+              </button>
+            </div>
+          )}
+
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 mb-4 shadow-lg shadow-emerald-950/40">
             <Building2 className="w-8 h-8" />
           </div>
@@ -174,17 +188,6 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
               >
                 <p className="font-semibold text-amber-300">Anggota</p>
                 <p className="text-[10px] text-slate-400">anggota / anggota123</p>
-              </button>
-            </div>
-            
-            <div className="mt-2 text-center">
-              <button
-                id="btn-fill-viewer"
-                type="button"
-                onClick={() => handleQuickFill('viewer', 'viewer123')}
-                className="w-full p-1.5 rounded-lg bg-slate-900/50 hover:bg-slate-700/50 border border-slate-700/60 text-slate-400 text-[11px] transition-colors cursor-pointer"
-              >
-                Atau masuk sebagai <span className="text-slate-200 font-medium">Viewer (viewer / viewer123)</span>
               </button>
             </div>
           </div>

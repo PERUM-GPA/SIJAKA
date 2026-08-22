@@ -31,7 +31,7 @@ export interface Member {
   Keterangan?: string;
 }
 
-export type FamilyRelation = 'Suami' | 'Istri' | 'Anak' | 'Orang Tua' | 'Lainnya';
+export type FamilyRelation = 'Kepala Keluarga' | 'Suami' | 'Istri' | 'Anak' | 'Orang Tua' | 'Tanggungan' | 'Lainnya';
 export type FamilyStatus = 'Aktif' | 'Tidak Aktif';
 export type HeirCandidate = 'Ya' | 'Tidak';
 
@@ -219,3 +219,43 @@ export interface DashboardMetrics {
   nominalSantunan?: number;
   masaTungguHari?: number;
 }
+
+export interface PublicDashboardMetrics {
+  totalKK: number;
+  kkAktif: number;
+  keluargaTerlindungi: number;
+  pembayaranBulanIni: number;
+  belumBayarBulanIni: number;
+  persentaseKepatuhan: number;
+  totalPemasukanBulanIni: number;
+  totalPengeluaranBulanIni: number;
+  saldoKas: number;
+  distribusiRT: {
+    rt06: number;
+    rt07: number;
+    rt10: number;
+  };
+}
+
+export interface PublicDaftarKKPayload {
+  kepalaKeluarga: {
+    No_KK: string;
+    NIK: string;
+    Nama: string;
+    Tempat_Lahir: string;
+    Tanggal_Lahir: string;
+    Alamat: string;
+    RT: RTEnum;
+    No_HP: string;
+  };
+  anggotaKeluarga: Array<{
+    NIK?: string;
+    Nama: string;
+    Tempat_Lahir?: string;
+    Tanggal_Lahir?: string;
+    Hubungan: FamilyRelation;
+    No_HP?: string;
+    Calon_Ahli_Waris: HeirCandidate;
+  }>;
+}
+

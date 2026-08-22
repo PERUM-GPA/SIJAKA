@@ -5,6 +5,8 @@ import {
   Setting,
   AppSettings,
   DashboardMetrics,
+  PublicDashboardMetrics,
+  PublicDaftarKKPayload,
   Family,
   Contribution,
   MemberArrearsInfo,
@@ -262,6 +264,20 @@ export const api = {
       request<{ success: boolean; message: string; data: Setting }>(`/api/settings/${key}`, {
         method: 'PUT',
         body: JSON.stringify({ value }),
+      }),
+  },
+
+  public: {
+    getDashboard: () =>
+      request<{ success: boolean; data: PublicDashboardMetrics }>('/api/public/dashboard'),
+    daftarKK: (payload: PublicDaftarKKPayload) =>
+      request<{
+        success: boolean;
+        message: string;
+        data?: { idAnggota: string; nama: string; totalJiwa: number };
+      }>('/api/public/daftar-kk', {
+        method: 'POST',
+        body: JSON.stringify(payload),
       }),
   },
 
