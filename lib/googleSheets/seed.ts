@@ -1,14 +1,23 @@
 import bcrypt from 'bcryptjs';
-import { Member, User, ActivityLog, Setting, Family, Contribution } from '../../src/types/index.ts';
+import {
+  Member,
+  User,
+  ActivityLog,
+  Setting,
+  Family,
+  Contribution,
+  DeathReport,
+  Compensation,
+  CashTransaction,
+  Expense,
+} from '../../src/types/index.ts';
 
-// Pre-hashed passwords for default users (password: 'admin123', 'bendahara123', 'pengurus123', 'anggota123', 'viewer123')
-// We will generate hashes properly or use bcrypt.hashSync
+// Pre-hashed passwords for default users (password: 'admin123', 'bendahara123', 'pengurus123', 'anggota123')
 export const DEFAULT_PASSWORDS = {
   admin: 'admin123',
   bendahara: 'bendahara123',
   pengurus: 'pengurus123',
   anggota: 'anggota123',
-  viewer: 'viewer123',
 };
 
 export function getInitialMembers(): Member[] {
@@ -176,17 +185,6 @@ export function getInitialUsers(): User[] {
       Status: 'Aktif',
       Tanggal_Dibuat: '2023-04-10',
       Terakhir_Login: '2026-08-18 10:00:00',
-    },
-    {
-      ID_User: 'USR005',
-      ID_Anggota: undefined,
-      Nama: 'Warga Tamu (Viewer)',
-      Username: 'viewer',
-      Password: bcrypt.hashSync(DEFAULT_PASSWORDS.viewer, salt),
-      Role: 'VIEWER',
-      Status: 'Aktif',
-      Tanggal_Dibuat: '2023-05-01',
-      Terakhir_Login: '2026-08-15 09:30:00',
     },
   ];
 }
@@ -646,4 +644,203 @@ export function getInitialLogs(): ActivityLog[] {
       Status: 'SUCCESS',
     },
   ];
+}
+
+export function getInitialDeathReports(): DeathReport[] {
+  return [
+    {
+      ID_Laporan: 'LK000001',
+      ID_Anggota: 'A00006',
+      Tanggal_Lapor: '2024-05-14',
+      Pelapor: 'Sri Wahyuni',
+      Hubungan_Pelapor: 'Pasangan',
+      Waktu_Kematian: '2024-05-14 06:30',
+      Tempat_Kematian: 'Rumah Duka Perum GPA Ngijo Blok A-03',
+      Penyebab_Kematian: 'Sakit Usia Lanjut',
+      Dokumen_Pendukung: 'Surat Keterangan Kematian Kelurahan & RT 06',
+      Status: 'SELESAI',
+      Diverifikasi_Oleh: 'USR003',
+      Tanggal_Verifikasi: '2024-05-14 08:00:00',
+      Disetujui_Oleh: 'USR001',
+      Tanggal_Persetujuan: '2024-05-14 09:00:00',
+      Keterangan: 'Laporan kematian telah selesai dan santunan diserahkan ke ahli waris',
+      Tanggal_Dibuat: '2024-05-14 07:00:00',
+      Tanggal_Diperbarui: '2024-05-14 10:30:00',
+    },
+  ];
+}
+
+export function getInitialSantunan(): Compensation[] {
+  return [
+    {
+      ID_Santunan: 'S000001',
+      ID_Laporan: 'LK000001',
+      ID_Anggota: 'A00006',
+      ID_AhliWaris: 'K00008',
+      Nama_Penerima: 'Sri Wahyuni',
+      Hubungan_Penerima: 'Istri',
+      Nominal_Santunan: 600000,
+      Tanggal_Pengajuan: '2024-05-14',
+      Status_Verifikasi: 'TERVERIFIKASI',
+      Diverifikasi_Oleh: 'USR003',
+      Tanggal_Verifikasi: '2024-05-14 08:30:00',
+      Status_Persetujuan: 'DISETUJUI',
+      Disetujui_Oleh: 'USR001',
+      Tanggal_Persetujuan: '2024-05-14 09:30:00',
+      Tanggal_Pencairan: '2024-05-14',
+      Metode_Pencairan: 'Tunai',
+      Nomor_Bukti: 'BS-2024-001',
+      Bukti_Pencairan: 'Tanda Terima Santunan Fisik diarsipkan Bendahara',
+      Keterangan: 'Santunan kematian Alm. Suparman telah diserahkan langsung ke Ibu Sri Wahyuni disaksikan pengurus RT 06',
+      Tanggal_Dibuat: '2024-05-14 08:00:00',
+      Tanggal_Diperbarui: '2024-05-14 10:30:00',
+    },
+  ];
+}
+
+export function getInitialExpenses(): Expense[] {
+  return [
+    {
+      ID_Pengeluaran: 'P000001',
+      Tanggal_Pengeluaran: '2026-01-15',
+      Kategori: 'Administrasi',
+      Uraian: 'Pengadaan Buku Kas Besar, Kwitansi Iuran, dan ATK Pengurus',
+      Nominal: 75000,
+      Metode_Pembayaran: 'Tunai',
+      Nomor_Bukti: 'EXP-2026-001',
+      Bukti_Pengeluaran: 'Struk Toko Buku Salemba',
+      Diajukan_Oleh: 'USR002',
+      Disetujui_Oleh: 'USR001',
+      Tanggal_Persetujuan: '2026-01-15 10:00:00',
+      Status: 'DIBAYARKAN',
+      Keterangan: 'Pembelian perlengkapan administrasi awal tahun',
+      Tanggal_Dibuat: '2026-01-15 09:00:00',
+      Tanggal_Diperbarui: '2026-01-15 11:00:00',
+    },
+    {
+      ID_Pengeluaran: 'P000002',
+      Tanggal_Pengeluaran: '2026-02-20',
+      Kategori: 'Kegiatan Jamaah',
+      Uraian: 'Perawatan Sound System Tahlil & Pengadaan Kabel Mikrofon',
+      Nominal: 150000,
+      Metode_Pembayaran: 'Tunai',
+      Nomor_Bukti: 'EXP-2026-002',
+      Bukti_Pengeluaran: 'Nota Servis Elektronik Rejeki',
+      Diajukan_Oleh: 'USR003',
+      Disetujui_Oleh: 'USR001',
+      Tanggal_Persetujuan: '2026-02-20 14:00:00',
+      Status: 'DIBAYARKAN',
+      Keterangan: 'Perawatan rutin alat tahlil keliling',
+      Tanggal_Dibuat: '2026-02-20 13:00:00',
+      Tanggal_Diperbarui: '2026-02-20 15:00:00',
+    },
+  ];
+}
+
+export function getInitialCashTransactions(): CashTransaction[] {
+  // Compute initial ledger with a foundation balance + all initial contributions + santunan + expenses
+  const transactions: CashTransaction[] = [
+    {
+      ID_Transaksi: 'BK000001',
+      Tanggal: '2023-01-01',
+      Jenis_Transaksi: 'KAS_MASUK',
+      Sumber_Transaksi: 'PENYESUAIAN',
+      ID_Sumber: 'SALDO_AWAL',
+      Uraian: 'Saldo Modal Awal Kas Jamaah Tahlil Ar Rohman',
+      Kas_Masuk: 3500000,
+      Kas_Keluar: 0,
+      Saldo: 3500000,
+      Metode: 'Tunai',
+      Nomor_Bukti: 'SA-2023-01',
+      Petugas: 'H. Ahmad Syukron (Admin)',
+      Status: 'VALID',
+      Keterangan: 'Saldo awal kas paguyuban saat pembentukan sistem SIJAKA',
+      Tanggal_Dibuat: '2023-01-01 08:00:00',
+    },
+    {
+      ID_Transaksi: 'BK000002',
+      Tanggal: '2024-05-14',
+      Jenis_Transaksi: 'KAS_KELUAR',
+      Sumber_Transaksi: 'SANTUNAN',
+      ID_Sumber: 'S000001',
+      ID_Anggota: 'A00006',
+      Uraian: 'Pencairan Santunan Kematian Alm. Suparman ke Ibu Sri Wahyuni (Istri)',
+      Kas_Masuk: 0,
+      Kas_Keluar: 600000,
+      Saldo: 2900000,
+      Metode: 'Tunai',
+      Nomor_Bukti: 'BS-2024-001',
+      Petugas: 'Muhammad Ridwan (Bendahara)',
+      Status: 'VALID',
+      Keterangan: 'Santunan kematian duka',
+      Tanggal_Dibuat: '2024-05-14 10:30:00',
+    },
+    {
+      ID_Transaksi: 'BK000003',
+      Tanggal: '2026-01-15',
+      Jenis_Transaksi: 'KAS_KELUAR',
+      Sumber_Transaksi: 'PENGELUARAN',
+      ID_Sumber: 'P000001',
+      Uraian: 'Pengadaan Buku Kas Besar, Kwitansi Iuran, dan ATK Pengurus',
+      Kas_Masuk: 0,
+      Kas_Keluar: 75000,
+      Saldo: 2825000,
+      Metode: 'Tunai',
+      Nomor_Bukti: 'EXP-2026-001',
+      Petugas: 'Muhammad Ridwan (Bendahara)',
+      Status: 'VALID',
+      Keterangan: 'Pengeluaran Administrasi',
+      Tanggal_Dibuat: '2026-01-15 11:00:00',
+    },
+    {
+      ID_Transaksi: 'BK000004',
+      Tanggal: '2026-02-20',
+      Jenis_Transaksi: 'KAS_KELUAR',
+      Sumber_Transaksi: 'PENGELUARAN',
+      ID_Sumber: 'P000002',
+      Uraian: 'Perawatan Sound System Tahlil & Pengadaan Kabel Mikrofon',
+      Kas_Masuk: 0,
+      Kas_Keluar: 150000,
+      Saldo: 2675000,
+      Metode: 'Tunai',
+      Nomor_Bukti: 'EXP-2026-002',
+      Petugas: 'Muhammad Ridwan (Bendahara)',
+      Status: 'VALID',
+      Keterangan: 'Pengeluaran Kegiatan Jamaah',
+      Tanggal_Dibuat: '2026-02-20 15:00:00',
+    },
+  ];
+
+  // Dynamically add initial contributions to ledger in sorted order
+  const contributions = getInitialContributions();
+  let currentBalance = 2675000;
+  let counter = 5;
+
+  for (const c of contributions) {
+    if (c.Status === 'Lunas') {
+      currentBalance += c.Nominal;
+      const transId = `BK${String(counter).padStart(6, '0')}`;
+      transactions.push({
+        ID_Transaksi: transId,
+        Tanggal: c.Tanggal_Bayar,
+        Jenis_Transaksi: 'KAS_MASUK',
+        Sumber_Transaksi: 'IURAN',
+        ID_Sumber: c.ID_Iuran,
+        ID_Anggota: c.ID_Anggota,
+        Uraian: `Penerimaan Iuran ${c.ID_Anggota} Periode ${c.Periode_Bulan}/${c.Periode_Tahun}`,
+        Kas_Masuk: c.Nominal,
+        Kas_Keluar: 0,
+        Saldo: currentBalance,
+        Metode: c.Metode === 'Transfer' ? 'Transfer' : 'Tunai',
+        Nomor_Bukti: `KWT-${c.ID_Iuran}`,
+        Petugas: c.Petugas,
+        Status: 'VALID',
+        Keterangan: c.Keterangan || `Iuran ${c.Periode_Bulan}/${c.Periode_Tahun}`,
+        Tanggal_Dibuat: `${c.Tanggal_Bayar} 10:00:00`,
+      });
+      counter++;
+    }
+  }
+
+  return transactions;
 }

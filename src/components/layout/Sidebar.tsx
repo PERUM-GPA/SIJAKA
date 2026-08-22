@@ -60,74 +60,63 @@ export function Sidebar({
   setIsMobileOpen,
 }: SidebarProps) {
   const { user } = useAuth();
-  const role = user?.Role || 'VIEWER';
+  const role = user?.Role || 'ANGGOTA';
 
   const navItems: NavItem[] = [
     {
       id: 'dashboard',
       label: 'Dashboard',
       icon: LayoutDashboard,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
     },
     {
       id: 'public-preview',
       label: 'Dashboard Publik (Warga)',
       icon: Globe,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
       badge: 'Publik',
     },
     {
       id: 'anggota',
       label: 'Data Anggota',
       icon: Users,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
     },
     {
       id: 'keluarga',
       label: 'Data Keluarga',
       icon: Users2,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
     },
     {
       id: 'iuran',
       label: 'Iuran Wajib',
       icon: CreditCard,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
     },
     {
       id: 'kematian',
       label: 'Laporan Kematian',
       icon: UserCheck,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
-      badge: 'Phase 3',
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
     },
     {
       id: 'santunan',
       label: 'Santunan Kematian',
       icon: HeartHandshake,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA', 'VIEWER'],
-      badge: 'Phase 3',
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
     },
     {
       id: 'buku-kas',
-      label: 'Buku Kas',
+      label: 'Buku Kas (Ledger)',
       icon: BookOpen,
       allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS'],
-      badge: 'Phase 3',
     },
     {
       id: 'pengeluaran',
       label: 'Pengeluaran',
       icon: Receipt,
       allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS'],
-      badge: 'Phase 3',
-    },
-    {
-      id: 'laporan',
-      label: 'Laporan Keuangan',
-      icon: FileText,
-      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'VIEWER'],
-      badge: 'Phase 3',
     },
     {
       id: 'users',

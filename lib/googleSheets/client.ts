@@ -1,12 +1,27 @@
 import { google, sheets_v4 } from 'googleapis';
-import { Member, User, ActivityLog, Setting, Family, Contribution } from '../../src/types/index.ts';
+import {
+  Member,
+  User,
+  ActivityLog,
+  Setting,
+  Family,
+  Contribution,
+  DeathReport,
+  Compensation,
+  CashTransaction,
+  Expense,
+} from '../../src/types/index.ts';
 import {
   getInitialMembers,
   getInitialUsers,
   getInitialSettings,
   getInitialLogs,
   getInitialFamilies,
-  getInitialContributions
+  getInitialContributions,
+  getInitialDeathReports,
+  getInitialSantunan,
+  getInitialCashTransactions,
+  getInitialExpenses,
 } from './seed.ts';
 
 // In-memory persistent cache / fallback store
@@ -16,6 +31,10 @@ let memorySettings: Setting[] = getInitialSettings();
 let memoryLogs: ActivityLog[] = getInitialLogs();
 let memoryFamilies: Family[] = getInitialFamilies();
 let memoryContributions: Contribution[] = getInitialContributions();
+let memoryDeathReports: DeathReport[] = getInitialDeathReports();
+let memorySantunan: Compensation[] = getInitialSantunan();
+let memoryCashTransactions: CashTransaction[] = getInitialCashTransactions();
+let memoryExpenses: Expense[] = getInitialExpenses();
 
 export const SHEET_NAMES = {
   ANGGOTA: '01_ANGGOTA',
@@ -44,18 +63,27 @@ export const HEADERS = {
     'Nominal', 'Status', 'Metode', 'Petugas', 'Keterangan'
   ],
   [SHEET_NAMES.LAPORAN_KEMATIAN]: [
-    'ID_Kematian', 'ID_Anggota', 'ID_Keluarga', 'Tanggal_Meninggal',
-    'Tempat_Meninggal', 'Penyebab', 'Tanggal_Lapor', 'Pelapor', 'Status_Verifikasi'
+    'ID_Laporan', 'ID_Anggota', 'Tanggal_Lapor', 'Pelapor', 'Hubungan_Pelapor',
+    'Waktu_Kematian', 'Tempat_Kematian', 'Penyebab_Kematian', 'Dokumen_Pendukung',
+    'Status', 'Diverifikasi_Oleh', 'Tanggal_Verifikasi', 'Disetujui_Oleh',
+    'Tanggal_Persetujuan', 'Keterangan', 'Tanggal_Dibuat', 'Tanggal_Diperbarui'
   ],
   [SHEET_NAMES.SANTUNAN]: [
-    'ID_Santunan', 'ID_Kematian', 'ID_Anggota', 'Nominal',
-    'Tanggal_Serah', 'Penerima', 'Status_Penyaluran'
+    'ID_Santunan', 'ID_Laporan', 'ID_Anggota', 'ID_AhliWaris', 'Nama_Penerima',
+    'Hubungan_Penerima', 'Nominal_Santunan', 'Tanggal_Pengajuan', 'Status_Verifikasi',
+    'Diverifikasi_Oleh', 'Tanggal_Verifikasi', 'Status_Persetujuan', 'Disetujui_Oleh',
+    'Tanggal_Persetujuan', 'Tanggal_Pencairan', 'Metode_Pencairan', 'Nomor_Bukti',
+    'Bukti_Pencairan', 'Keterangan', 'Tanggal_Dibuat', 'Tanggal_Diperbarui'
   ],
   [SHEET_NAMES.BUKU_KAS]: [
-    'ID_Kas', 'Tanggal', 'Jenis', 'Kategori', 'Nominal', 'Saldo', 'Keterangan', 'ID_User'
+    'ID_Transaksi', 'Tanggal', 'Jenis_Transaksi', 'Sumber_Transaksi', 'ID_Sumber',
+    'ID_Anggota', 'Uraian', 'Kas_Masuk', 'Kas_Keluar', 'Saldo', 'Metode',
+    'Nomor_Bukti', 'Petugas', 'Status', 'Keterangan', 'Tanggal_Dibuat'
   ],
   [SHEET_NAMES.PENGELUARAN]: [
-    'ID_Pengeluaran', 'Tanggal', 'Kategori', 'Nominal', 'Keterangan', 'Bukti_Foto', 'ID_User'
+    'ID_Pengeluaran', 'Tanggal_Pengeluaran', 'Kategori', 'Uraian', 'Nominal',
+    'Metode_Pembayaran', 'Nomor_Bukti', 'Bukti_Pengeluaran', 'Diajukan_Oleh',
+    'Disetujui_Oleh', 'Tanggal_Persetujuan', 'Status', 'Keterangan', 'Tanggal_Dibuat', 'Tanggal_Diperbarui'
   ],
   [SHEET_NAMES.USERS]: [
     'ID_User', 'ID_Anggota', 'Nama', 'Username', 'Password', 'Role', 'Status', 'Tanggal_Dibuat', 'Terakhir_Login'
@@ -113,6 +141,14 @@ export const memoryStore = {
   setFamilies: (families: Family[]) => { memoryFamilies = families; },
   getContributions: () => memoryContributions,
   setContributions: (contributions: Contribution[]) => { memoryContributions = contributions; },
+  getDeathReports: () => memoryDeathReports,
+  setDeathReports: (reports: DeathReport[]) => { memoryDeathReports = reports; },
+  getSantunan: () => memorySantunan,
+  setSantunan: (items: Compensation[]) => { memorySantunan = items; },
+  getCashTransactions: () => memoryCashTransactions,
+  setCashTransactions: (transactions: CashTransaction[]) => { memoryCashTransactions = transactions; },
+  getExpenses: () => memoryExpenses,
+  setExpenses: (expenses: Expense[]) => { memoryExpenses = expenses; },
   getUsers: () => memoryUsers,
   setUsers: (users: User[]) => { memoryUsers = users; },
   getSettings: () => memorySettings,

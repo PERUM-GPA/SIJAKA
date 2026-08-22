@@ -12,6 +12,12 @@ import {
   History,
   CheckCircle2,
   RefreshCw,
+  BookOpen,
+  Receipt,
+  HeartHandshake,
+  Wallet,
+  ArrowDownRight,
+  ArrowUpRight,
 } from 'lucide-react';
 import { DashboardMetrics, ActivityLog } from '../../types/index.ts';
 import { api } from '../../lib/api.ts';
@@ -162,21 +168,21 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           </div>
         </div>
 
-        {/* Anggota Meninggal */}
+        {/* Saldo Kas (Phase 3) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-600">
-              Anggota Meninggal
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+              Saldo Kas Ledger
             </span>
-            <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
-              <HeartCrack className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Wallet className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <p className="text-2xl sm:text-3xl font-bold text-rose-600">
-              {isLoading ? '...' : metrics?.anggotaMeninggal ?? 0}
+            <p className="text-xl sm:text-2xl font-bold text-emerald-700 font-mono">
+              {isLoading ? '...' : formatRupiah(metrics?.saldoKas ?? 0)}
             </p>
-            <p className="text-xs text-slate-500 mt-1">Telah disalurkan santunan duka</p>
+            <p className="text-xs text-slate-500 mt-1">Kas riil tercatat di Buku Kas</p>
           </div>
         </div>
 
@@ -269,28 +275,39 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
         <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900 mb-1">Aksi Cepat</h2>
-            <p className="text-xs text-slate-500 mb-4">Pintasan navigasi modul sistem</p>
+            <p className="text-xs text-slate-500 mb-4">Pintasan modul terpadu</p>
 
             <div className="space-y-2">
               <button
-                onClick={() => onNavigate('anggota')}
-                className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
+                onClick={() => onNavigate('kematian')}
+                className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
               >
                 <div className="flex items-center space-x-2.5">
-                  <Users className="w-4 h-4 text-emerald-600" />
-                  <span>Daftar Anggota Jamaah</span>
+                  <HeartCrack className="w-4 h-4 text-rose-600" />
+                  <span>Laporan Kematian</span>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
               </button>
 
-              {user?.Role === 'ADMIN' && (
+              <button
+                onClick={() => onNavigate('santunan')}
+                className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <HeartHandshake className="w-4 h-4 text-purple-600" />
+                  <span>Santunan Kematian</span>
+                </div>
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user?.Role || '') && (
                 <button
-                  onClick={() => onNavigate('users')}
-                  className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
+                  onClick={() => onNavigate('buku-kas')}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center space-x-2.5">
-                    <Shield className="w-4 h-4 text-purple-600" />
-                    <span>Kelola Pengguna Sistem</span>
+                    <BookOpen className="w-4 h-4 text-emerald-600" />
+                    <span>Buku Kas (Ledger Otomatis)</span>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                 </button>
@@ -298,12 +315,12 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
 
               {['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user?.Role || '') && (
                 <button
-                  onClick={() => onNavigate('logs')}
-                  className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
+                  onClick={() => onNavigate('pengeluaran')}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center space-x-2.5">
-                    <History className="w-4 h-4 text-blue-600" />
-                    <span>Audit Log Aktivitas</span>
+                    <Receipt className="w-4 h-4 text-amber-600" />
+                    <span>Pengeluaran Operasional</span>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                 </button>
@@ -311,7 +328,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
             </div>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-100 text-[11px] text-slate-400">
+          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
             Login sebagai: <span className="font-semibold text-slate-700">{user?.Nama}</span> ({user?.Role})
           </div>
         </div>

@@ -10,6 +10,11 @@ import {
   Family,
   Contribution,
   MemberArrearsInfo,
+  DeathReport,
+  Compensation,
+  CashTransaction,
+  CashSummary,
+  Expense,
 } from '../types/index.ts';
 
 const TOKEN_KEY = 'sijaka_auth_token';
@@ -240,6 +245,248 @@ export const api = {
       request<{ success: boolean; data: Contribution[] }>(`/api/anggota/${memberId}/iuran`),
     getMemberArrears: (memberId: string) =>
       request<{ success: boolean; data: MemberArrearsInfo }>(`/api/anggota/${memberId}/tunggakan`),
+  },
+
+  kematian: {
+    list: (params: { search?: string; status?: string; rt?: string; page?: number; limit?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (params.search) query.set('search', params.search);
+      if (params.status) query.set('status', params.status);
+      if (params.rt) query.set('rt', params.rt);
+      if (params.page) query.set('page', String(params.page));
+      if (params.limit) query.set('limit', String(params.limit));
+
+      return request<{
+        success: boolean;
+        data: (DeathReport & {
+          namaAnggota: string;
+          noKK: string;
+          nikAnggota: string;
+          rtAnggota: string;
+          alamatAnggota: string;
+          statusSantunan: string;
+          idSantunan?: string;
+        })[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(`/api/kematian?${query.toString()}`);
+    },
+    get: (id: string) =>
+      request<{
+        success: boolean;
+        data: DeathReport & {
+          member?: Member;
+          families?: Family[];
+          santunan?: Compensation | null;
+        };
+      }>(`/api/kematian/${id}`),
+    create: (data: {
+      ID_Anggota: string;
+      Tanggal_Lapor?: string;
+      Pelapor: string;
+      Hubungan_Pelapor: string;
+      Waktu_Kematian: string;
+      Tempat_Kematian: string;
+      Penyebab_Kematian?: string;
+      Dokumen_Pendukung?: string;
+      Keterangan?: string;
+    }) =>
+      request<{ success: boolean; message: string; data: DeathReport }>('/api/kematian', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<DeathReport>) =>
+      request<{ success: boolean; message: string; data: DeathReport }>(`/api/kematian/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    verify: (id: string, status: 'DIVERIFIKASI' | 'DITOLAK', keterangan?: string) =>
+      request<{ success: boolean; message: string; data: DeathReport }>(`/api/kematian/${id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ status, keterangan }),
+      }),
+    approve: (id: string, status: 'DISETUJUI' | 'DITOLAK', keterangan?: string) =>
+      request<{ success: boolean; message: string; data: DeathReport }>(`/api/kematian/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ status, keterangan }),
+      }),
+  },
+
+  santunan: {
+    list: (params: { search?: string; status?: string; page?: number; limit?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (params.search) query.set('search', params.search);
+      if (params.status) query.set('status', params.status);
+      if (params.page) query.set('page', String(params.page));
+      if (params.limit) query.set('limit', String(params.limit));
+
+      return request<{
+        success: boolean;
+        data: (Compensation & {
+          namaAnggota: string;
+          noKK: string;
+          rtAnggota: string;
+          laporanTanggal: string;
+          statusLaporan: string;
+          isDisbursed: boolean;
+        })[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(`/api/santunan?${query.toString()}`);
+    },
+    get: (id: string) =>
+      request<{
+        success: boolean;
+        data: Compensation & {
+          member?: Member;
+          report?: DeathReport;
+          families?: Family[];
+        };
+      }>(`/api/santunan/${id}`),
+    create: (data: {
+      ID_Laporan: string;
+      ID_Anggota: string;
+      ID_AhliWaris: string;
+      Nama_Penerima: string;
+      Hubungan_Penerima: string;
+      Nominal_Santunan?: number;
+      Tanggal_Pengajuan?: string;
+      Keterangan?: string;
+    }) =>
+      request<{ success: boolean; message: string; data: Compensation }>('/api/santunan', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<Compensation>) =>
+      request<{ success: boolean; message: string; data: Compensation }>(`/api/santunan/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    verify: (id: string, status: 'TERVERIFIKASI' | 'DITOLAK', keterangan?: string) =>
+      request<{ success: boolean; message: string; data: Compensation }>(`/api/santunan/${id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ status, keterangan }),
+      }),
+    approve: (id: string, status: 'DISETUJUI' | 'DITOLAK', keterangan?: string) =>
+      request<{ success: boolean; message: string; data: Compensation }>(`/api/santunan/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ status, keterangan }),
+      }),
+    disburse: (
+      id: string,
+      data: {
+        Tanggal_Pencairan?: string;
+        Metode_Pencairan: string;
+        Nomor_Bukti?: string;
+        Bukti_Pencairan?: string;
+        Keterangan?: string;
+      }
+    ) =>
+      request<{
+        success: boolean;
+        message: string;
+        data: { santunan: Compensation; cashTransactionId: string };
+      }>(`/api/santunan/${id}/disburse`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  bukuKas: {
+    list: (params: {
+      search?: string;
+      jenis?: string;
+      sumber?: string;
+      status?: string;
+      dariTanggal?: string;
+      sampaiTanggal?: string;
+      page?: number;
+      limit?: number;
+    } = {}) => {
+      const query = new URLSearchParams();
+      if (params.search) query.set('search', params.search);
+      if (params.jenis) query.set('jenis', params.jenis);
+      if (params.sumber) query.set('sumber', params.sumber);
+      if (params.status) query.set('status', params.status);
+      if (params.dariTanggal) query.set('dariTanggal', params.dariTanggal);
+      if (params.sampaiTanggal) query.set('sampaiTanggal', params.sampaiTanggal);
+      if (params.page) query.set('page', String(params.page));
+      if (params.limit) query.set('limit', String(params.limit));
+
+      return request<{
+        success: boolean;
+        data: CashTransaction[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(`/api/buku-kas?${query.toString()}`);
+    },
+    getSummary: () =>
+      request<{ success: boolean; data: CashSummary }>('/api/buku-kas/summary'),
+    get: (id: string) =>
+      request<{ success: boolean; data: CashTransaction }>(`/api/buku-kas/${id}`),
+    cancel: (id: string, alasan: string) =>
+      request<{ success: boolean; message: string; data: CashTransaction }>(`/api/buku-kas/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ alasan }),
+      }),
+  },
+
+  pengeluaran: {
+    list: (params: { search?: string; kategori?: string; status?: string; page?: number; limit?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (params.search) query.set('search', params.search);
+      if (params.kategori) query.set('kategori', params.kategori);
+      if (params.status) query.set('status', params.status);
+      if (params.page) query.set('page', String(params.page));
+      if (params.limit) query.set('limit', String(params.limit));
+
+      return request<{
+        success: boolean;
+        data: Expense[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(`/api/pengeluaran?${query.toString()}`);
+    },
+    get: (id: string) =>
+      request<{ success: boolean; data: Expense }>(`/api/pengeluaran/${id}`),
+    create: (data: {
+      Tanggal_Pengeluaran?: string;
+      Kategori: string;
+      Uraian: string;
+      Nominal: number;
+      Metode_Pembayaran?: string;
+      Nomor_Bukti?: string;
+      Bukti_Pengeluaran?: string;
+      Keterangan?: string;
+    }) =>
+      request<{ success: boolean; message: string; data: Expense }>('/api/pengeluaran', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<Expense>) =>
+      request<{ success: boolean; message: string; data: Expense }>(`/api/pengeluaran/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    approve: (id: string, status: 'DISETUJUI' | 'DITOLAK', keterangan?: string) =>
+      request<{ success: boolean; message: string; data: Expense }>(`/api/pengeluaran/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ status, keterangan }),
+      }),
+    pay: (
+      id: string,
+      data: {
+        Tanggal_Pengeluaran?: string;
+        Metode_Pembayaran?: string;
+        Nomor_Bukti?: string;
+        Bukti_Pengeluaran?: string;
+        Keterangan?: string;
+      }
+    ) =>
+      request<{
+        success: boolean;
+        message: string;
+        data: { expense: Expense; cashTransactionId: string };
+      }>(`/api/pengeluaran/${id}/pay`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 
   users: {

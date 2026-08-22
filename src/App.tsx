@@ -17,10 +17,13 @@ import { AnggotaFormView } from './components/anggota/AnggotaFormView.tsx';
 import { AnggotaDetailView } from './components/anggota/AnggotaDetailView.tsx';
 import { KeluargaListView } from './components/keluarga/KeluargaListView.tsx';
 import { IuranListView } from './components/iuran/IuranListView.tsx';
+import { KematianListView } from './components/kematian/KematianListView.tsx';
+import { SantunanListView } from './components/santunan/SantunanListView.tsx';
+import { BukuKasView } from './components/bukuKas/BukuKasView.tsx';
+import { PengeluaranListView } from './components/pengeluaran/PengeluaranListView.tsx';
 import { UsersView } from './components/users/UsersView.tsx';
 import { LogsView } from './components/logs/LogsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
-import { ModulePlaceholderView } from './components/placeholders/ModulePlaceholderView.tsx';
 import { api } from './lib/api.ts';
 
 function MainApp() {
@@ -45,8 +48,8 @@ function MainApp() {
   useEffect(() => {
     if (user) {
       // Role guards
-      if (user.Role === 'ANGGOTA' || user.Role === 'VIEWER') {
-        if (['users', 'settings'].includes(activeTab)) {
+      if (user.Role === 'ANGGOTA') {
+        if (['users', 'settings', 'logs', 'buku-kas', 'pengeluaran'].includes(activeTab)) {
           setActiveTab('dashboard');
         }
       }
@@ -169,18 +172,23 @@ function MainApp() {
       case 'iuran':
         return <IuranListView />;
 
-      // Placeholder modules for Phase 3+
       case 'kematian':
+        return <KematianListView />;
+
       case 'santunan':
+        return <SantunanListView />;
+
       case 'buku-kas':
+        if (!['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user.Role)) {
+          return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
+        }
+        return <BukuKasView />;
+
       case 'pengeluaran':
-      case 'laporan':
-        return (
-          <ModulePlaceholderView
-            tab={activeTab}
-            onBackToDashboard={() => setActiveTab('dashboard')}
-          />
-        );
+        if (!['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user.Role)) {
+          return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
+        }
+        return <PengeluaranListView />;
 
       default:
         return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;

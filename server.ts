@@ -39,6 +39,39 @@ import {
 } from './lib/services/arrears.ts';
 import { getAllLogs, createActivityLog } from './lib/googleSheets/logs.ts';
 import { getAllSettings, updateSetting, getParsedSettings } from './lib/googleSheets/settings.ts';
+import {
+  getAllDeathReports,
+  getDeathReportById,
+  getDeathReportsByMemberId,
+  createDeathReport,
+  updateDeathReport,
+  verifyDeathReport,
+  approveDeathReport,
+} from './lib/googleSheets/kematian.ts';
+import {
+  getAllSantunan,
+  getSantunanById,
+  getSantunanByLaporanId,
+  createSantunan,
+  updateSantunan,
+  verifySantunan,
+  approveSantunan,
+  disburseSantunan,
+} from './lib/googleSheets/santunan.ts';
+import {
+  getAllCashTransactions,
+  getCashTransactionById,
+  getCashSummary,
+  cancelCashTransaction,
+} from './lib/googleSheets/bukuKas.ts';
+import {
+  getAllExpenses,
+  getExpenseById,
+  createExpense,
+  updateExpense,
+  approveExpense,
+  payExpense,
+} from './lib/googleSheets/pengeluaran.ts';
 import { isGoogleSheetsConfigured } from './lib/googleSheets/client.ts';
 import { Member, DashboardMetrics } from './src/types/index.ts';
 
@@ -77,9 +110,8 @@ async function startServer() {
     try {
       const allMembers = await getAllMembers();
       const allFamilies = await getAllFamilies();
-      const allContributions = await getAllContributions();
-      const settings = await getParsedSettings();
       const arrearsData = await calculateAllMembersArrears();
+      const cashSummary = await getCashSummary();
 
       const totalKK = allMembers.length;
       const kkAktif = allMembers.filter((m) => m.Status === 'Aktif').length;
@@ -90,7 +122,6 @@ async function startServer() {
       const rt07 = allMembers.filter((m) => m.RT === '07').length;
       const rt10 = allMembers.filter((m) => m.RT === '10').length;
 
-      const saldoKas = allContributions.reduce((sum, c) => sum + (Number(c.Nominal) || 0), 0);
       const persentaseKepatuhan =
         arrearsData.summary.totalAnggotaAktif > 0
           ? Math.round(
@@ -107,9 +138,9 @@ async function startServer() {
           pembayaranBulanIni: arrearsData.summary.jumlahSudahBayarBulanIni,
           belumBayarBulanIni: arrearsData.summary.jumlahBelumBayarBulanIni,
           persentaseKepatuhan,
-          totalPemasukanBulanIni: arrearsData.summary.totalIuranTerkumpulBulanIni,
-          totalPengeluaranBulanIni: 0,
-          saldoKas,
+          totalPemasukanBulanIni: cashSummary.pemasukanBulanIni,
+          totalPengeluaranBulanIni: cashSummary.pengeluaranBulanIni,
+          saldoKas: cashSummary.saldoKas,
           distribusiRT: {
             rt06,
             rt07,
@@ -383,6 +414,9 @@ async function startServer() {
 
         // Calculate arrears summary
         const arrearsData = await calculateAllMembersArrears();
+        const cashSummary = await getCashSummary();
+        const deathReports = await getAllDeathReports();
+        const santunanList = await getAllSantunan();
 
         metrics.totalKeluarga = activeFamilies.length;
         metrics.anggotaDenganAhliWaris = membersWithHeirSet.size;
@@ -393,6 +427,15 @@ async function startServer() {
         metrics.iuranBulanan = settings.IURAN_BULANAN;
         metrics.nominalSantunan = settings.NOMINAL_SANTUNAN;
         metrics.masaTungguHari = settings.MASA_TUNGGU_HARI;
+
+        // Phase 3 Metrics
+        metrics.saldoKas = cashSummary.saldoKas;
+        metrics.totalKas = cashSummary.saldoKas;
+        metrics.totalPemasukan = cashSummary.totalPemasukan;
+        metrics.totalPengeluaran = cashSummary.totalPengeluaran;
+        metrics.totalLaporanKematian = deathReports.length;
+        metrics.laporanPending = deathReports.filter((r) => r.Status === 'DIAJUKAN' || r.Status === 'DIVERIFIKASI').length;
+        metrics.santunanPending = santunanList.filter((s) => s.Status_Persetujuan === 'MENUNGGU' || (s.Status_Persetujuan === 'DISETUJUI' && !s.Tanggal_Pencairan)).length;
       }
 
       res.json({ success: true, data: metrics });
@@ -1188,6 +1231,935 @@ async function startServer() {
     } catch (error: any) {
       console.error('Error calculating member arrears:', error);
       res.status(400).json({ success: false, message: error.message || 'Gagal menghitung tunggakan anggota.' });
+    }
+  });
+
+  // ------------------------------------------
+  // 04_LAPORAN_KEMATIAN ROUTES
+  // ------------------------------------------
+  app.get('/api/kematian', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      let reports = await getAllDeathReports();
+      const allMembers = await getAllMembers();
+      const allSantunan = await getAllSantunan();
+
+      const memberMap = new Map(allMembers.map((m) => [m.ID_Anggota, m]));
+      const santunanMap = new Map(allSantunan.map((s) => [s.ID_Laporan, s]));
+
+      // RBAC filter
+      if (user.Role === 'ANGGOTA' && user.ID_Anggota) {
+        reports = reports.filter((r) => r.ID_Anggota === user.ID_Anggota);
+      }
+
+      // Query Filters
+      const search = (req.query.search as string || '').toLowerCase().trim();
+      const statusFilter = req.query.status as string;
+      const rtFilter = req.query.rt as string;
+
+      let enriched = reports.map((r) => {
+        const m = memberMap.get(r.ID_Anggota);
+        const s = santunanMap.get(r.ID_Laporan);
+        return {
+          ...r,
+          namaAnggota: m?.Nama || 'Tidak Diketahui',
+          noKK: m?.No_KK || '',
+          nikAnggota: m?.NIK || '',
+          rtAnggota: m?.RT || '',
+          alamatAnggota: m?.Alamat || '',
+          statusSantunan: s ? (s.Tanggal_Pencairan ? 'DICATAT_CAIR' : s.Status_Persetujuan) : 'BELUM_PENGAJUAN',
+          idSantunan: s?.ID_Santunan,
+        };
+      });
+
+      if (search) {
+        enriched = enriched.filter(
+          (r) =>
+            r.ID_Laporan.toLowerCase().includes(search) ||
+            r.namaAnggota.toLowerCase().includes(search) ||
+            r.Pelapor.toLowerCase().includes(search) ||
+            r.noKK.includes(search) ||
+            r.nikAnggota.includes(search)
+        );
+      }
+
+      if (statusFilter && statusFilter !== 'ALL') {
+        enriched = enriched.filter((r) => r.Status === statusFilter);
+      }
+
+      if (rtFilter && rtFilter !== 'ALL') {
+        enriched = enriched.filter((r) => r.rtAnggota === rtFilter);
+      }
+
+      // Sort by Tanggal_Lapor desc
+      enriched.sort((a, b) => b.Tanggal_Lapor.localeCompare(a.Tanggal_Lapor));
+
+      // Pagination
+      const page = parseInt(req.query.page as string, 10) || 1;
+      const limit = parseInt(req.query.limit as string, 10) || 10;
+      const total = enriched.length;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const paginated = enriched.slice((page - 1) * limit, page * limit);
+
+      res.json({
+        success: true,
+        data: paginated,
+        pagination: { total, page, limit, totalPages },
+      });
+    } catch (error) {
+      console.error('Error fetching death reports:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat daftar laporan kematian.' });
+    }
+  });
+
+  app.get('/api/kematian/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+      const report = await getDeathReportById(id);
+
+      if (!report) {
+        res.status(404).json({ success: false, message: `Laporan kematian ${id} tidak ditemukan.` });
+        return;
+      }
+
+      if (user.Role === 'ANGGOTA' && user.ID_Anggota !== report.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Anda tidak memiliki hak akses melihat laporan ini.' });
+        return;
+      }
+
+      const member = await getMemberById(report.ID_Anggota);
+      const families = await getFamiliesByMemberId(report.ID_Anggota);
+      const santunan = await getSantunanByLaporanId(report.ID_Laporan);
+
+      res.json({
+        success: true,
+        data: {
+          ...report,
+          member,
+          families,
+          santunan,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Gagal memuat detail laporan kematian.' });
+    }
+  });
+
+  app.post('/api/kematian', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const {
+        ID_Anggota,
+        Tanggal_Lapor,
+        Pelapor,
+        Hubungan_Pelapor,
+        Waktu_Kematian,
+        Tempat_Kematian,
+        Penyebab_Kematian,
+        Dokumen_Pendukung,
+        Keterangan,
+      } = req.body;
+
+      if (!ID_Anggota || !Pelapor || !Hubungan_Pelapor || !Waktu_Kematian || !Tempat_Kematian) {
+        res.status(400).json({
+          success: false,
+          message: 'Kolom Anggota, Pelapor, Hubungan Pelapor, Waktu Kematian, dan Tempat Kematian wajib diisi.',
+        });
+        return;
+      }
+
+      if (user.Role === 'ANGGOTA' && user.ID_Anggota !== ID_Anggota) {
+        res.status(403).json({
+          success: false,
+          message: 'Anda hanya dapat mengajukan laporan kematian untuk Kartu Keluarga Anda sendiri.',
+        });
+        return;
+      }
+
+      const newReport = await createDeathReport({
+        ID_Anggota,
+        Tanggal_Lapor,
+        Pelapor,
+        Hubungan_Pelapor,
+        Waktu_Kematian,
+        Tempat_Kematian,
+        Penyebab_Kematian,
+        Dokumen_Pendukung,
+        Keterangan,
+      });
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'CREATE',
+        Modul: 'LAPORAN_KEMATIAN',
+        Record_ID: newReport.ID_Laporan,
+        Deskripsi: `Membuat laporan kematian baru untuk anggota ${ID_Anggota} (Pelapor: ${Pelapor})`,
+        Status: 'SUCCESS',
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Laporan kematian ${newReport.ID_Laporan} berhasil dibuat.`,
+        data: newReport,
+      });
+    } catch (error: any) {
+      console.error('Error creating death report:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal membuat laporan kematian.' });
+    }
+  });
+
+  app.put('/api/kematian/:id', requireAuth, requireRole(['ADMIN', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updated = await updateDeathReport(id, updates);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'UPDATE',
+        Modul: 'LAPORAN_KEMATIAN',
+        Record_ID: id,
+        Deskripsi: `Memperbarui data laporan kematian ${id}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Laporan kematian ${id} berhasil diperbarui.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui laporan kematian.' });
+    }
+  });
+
+  app.post('/api/kematian/:id/verify', requireAuth, requireRole(['ADMIN', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { status, keterangan } = req.body;
+
+      if (!status || !['DIVERIFIKASI', 'DITOLAK'].includes(status)) {
+        res.status(400).json({ success: false, message: 'Status verifikasi harus DIVERIFIKASI atau DITOLAK.' });
+        return;
+      }
+
+      const verified = await verifyDeathReport(id, user.Nama, status, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VERIFY',
+        Modul: 'LAPORAN_KEMATIAN',
+        Record_ID: id,
+        Deskripsi: `Verifikasi laporan kematian ${id} -> ${status}${keterangan ? ` (${keterangan})` : ''}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Laporan kematian ${id} berhasil diverifikasi dengan status ${status}.`,
+        data: verified,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memverifikasi laporan kematian.' });
+    }
+  });
+
+  app.post('/api/kematian/:id/approve', requireAuth, requireRole(['ADMIN', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { status, keterangan } = req.body;
+
+      if (!status || !['DISETUJUI', 'DITOLAK'].includes(status)) {
+        res.status(400).json({ success: false, message: 'Status persetujuan harus DISETUJUI atau DITOLAK.' });
+        return;
+      }
+
+      const approved = await approveDeathReport(id, user.Nama, status, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'APPROVE',
+        Modul: 'LAPORAN_KEMATIAN',
+        Record_ID: id,
+        Deskripsi: `Persetujuan laporan kematian ${id} -> ${status}${keterangan ? ` (${keterangan})` : ''}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Laporan kematian ${id} berhasil diproses persetujuan dengan status ${status}.`,
+        data: approved,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses persetujuan laporan kematian.' });
+    }
+  });
+
+  // ------------------------------------------
+  // 05_SANTUNAN ROUTES
+  // ------------------------------------------
+  app.get('/api/santunan', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      let items = await getAllSantunan();
+      const allMembers = await getAllMembers();
+      const allReports = await getAllDeathReports();
+
+      const memberMap = new Map(allMembers.map((m) => [m.ID_Anggota, m]));
+      const reportMap = new Map(allReports.map((r) => [r.ID_Laporan, r]));
+
+      if (user.Role === 'ANGGOTA' && user.ID_Anggota) {
+        items = items.filter((s) => s.ID_Anggota === user.ID_Anggota);
+      }
+
+      const search = (req.query.search as string || '').toLowerCase().trim();
+      const statusFilter = req.query.status as string;
+
+      let enriched = items.map((s) => {
+        const m = memberMap.get(s.ID_Anggota);
+        const r = reportMap.get(s.ID_Laporan);
+        return {
+          ...s,
+          namaAnggota: m?.Nama || 'Tidak Diketahui',
+          noKK: m?.No_KK || '',
+          rtAnggota: m?.RT || '',
+          laporanTanggal: r?.Tanggal_Lapor || '',
+          statusLaporan: r?.Status || '',
+          isDisbursed: Boolean(s.Tanggal_Pencairan),
+        };
+      });
+
+      if (search) {
+        enriched = enriched.filter(
+          (s) =>
+            s.ID_Santunan.toLowerCase().includes(search) ||
+            s.Nama_Penerima.toLowerCase().includes(search) ||
+            s.namaAnggota.toLowerCase().includes(search) ||
+            s.noKK.includes(search)
+        );
+      }
+
+      if (statusFilter && statusFilter !== 'ALL') {
+        if (statusFilter === 'CAIR') {
+          enriched = enriched.filter((s) => Boolean(s.Tanggal_Pencairan));
+        } else if (statusFilter === 'BELUM_CAIR') {
+          enriched = enriched.filter((s) => !s.Tanggal_Pencairan);
+        } else {
+          enriched = enriched.filter(
+            (s) => s.Status_Persetujuan === statusFilter || s.Status_Verifikasi === statusFilter
+          );
+        }
+      }
+
+      // Sort by Tanggal_Pengajuan desc
+      enriched.sort((a, b) => b.Tanggal_Pengajuan.localeCompare(a.Tanggal_Pengajuan));
+
+      const page = parseInt(req.query.page as string, 10) || 1;
+      const limit = parseInt(req.query.limit as string, 10) || 10;
+      const total = enriched.length;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const paginated = enriched.slice((page - 1) * limit, page * limit);
+
+      res.json({
+        success: true,
+        data: paginated,
+        pagination: { total, page, limit, totalPages },
+      });
+    } catch (error) {
+      console.error('Error fetching santunan:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat data santunan.' });
+    }
+  });
+
+  app.get('/api/santunan/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+      const santunan = await getSantunanById(id);
+
+      if (!santunan) {
+        res.status(404).json({ success: false, message: `Data santunan ${id} tidak ditemukan.` });
+        return;
+      }
+
+      if (user.Role === 'ANGGOTA' && user.ID_Anggota !== santunan.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Anda tidak memiliki hak akses melihat santunan ini.' });
+        return;
+      }
+
+      const member = await getMemberById(santunan.ID_Anggota);
+      const report = await getDeathReportById(santunan.ID_Laporan);
+      const families = await getFamiliesByMemberId(santunan.ID_Anggota);
+
+      res.json({
+        success: true,
+        data: {
+          ...santunan,
+          member,
+          report,
+          families,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Gagal memuat detail santunan.' });
+    }
+  });
+
+  app.post('/api/santunan', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const {
+        ID_Laporan,
+        ID_Anggota,
+        ID_AhliWaris,
+        Nama_Penerima,
+        Hubungan_Penerima,
+        Nominal_Santunan,
+        Tanggal_Pengajuan,
+        Keterangan,
+      } = req.body;
+
+      if (!ID_Laporan || !ID_Anggota || !ID_AhliWaris || !Nama_Penerima || !Hubungan_Penerima) {
+        res.status(400).json({
+          success: false,
+          message: 'Kolom Laporan Kematian, Anggota, Ahli Waris, dan Penerima wajib diisi lengkap.',
+        });
+        return;
+      }
+
+      const settings = await getParsedSettings();
+      const nominal = Nominal_Santunan || settings.NOMINAL_SANTUNAN || 600000;
+
+      const newSantunan = await createSantunan({
+        ID_Laporan,
+        ID_Anggota,
+        ID_AhliWaris,
+        Nama_Penerima,
+        Hubungan_Penerima,
+        Nominal_Santunan: nominal,
+        Tanggal_Pengajuan,
+        Keterangan,
+      });
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'CREATE',
+        Modul: 'SANTUNAN',
+        Record_ID: newSantunan.ID_Santunan,
+        Deskripsi: `Membuat pengajuan santunan duka ${newSantunan.ID_Santunan} untuk ${Nama_Penerima}`,
+        Status: 'SUCCESS',
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Pengajuan santunan ${newSantunan.ID_Santunan} berhasil dibuat.`,
+        data: newSantunan,
+      });
+    } catch (error: any) {
+      console.error('Error creating santunan:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal membuat pengajuan santunan.' });
+    }
+  });
+
+  app.put('/api/santunan/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updated = await updateSantunan(id, updates);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'UPDATE',
+        Modul: 'SANTUNAN',
+        Record_ID: id,
+        Deskripsi: `Memperbarui pengajuan santunan ${id}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Data santunan ${id} berhasil diperbarui.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui santunan.' });
+    }
+  });
+
+  app.post('/api/santunan/:id/verify', requireAuth, requireRole(['ADMIN', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { status, keterangan } = req.body;
+
+      if (!status || !['TERVERIFIKASI', 'DITOLAK'].includes(status)) {
+        res.status(400).json({ success: false, message: 'Status verifikasi harus TERVERIFIKASI atau DITOLAK.' });
+        return;
+      }
+
+      const verified = await verifySantunan(id, user.Nama, status, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VERIFY',
+        Modul: 'SANTUNAN',
+        Record_ID: id,
+        Deskripsi: `Verifikasi santunan ${id} -> ${status}${keterangan ? ` (${keterangan})` : ''}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Santunan ${id} berhasil diverifikasi dengan status ${status}.`,
+        data: verified,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memverifikasi santunan.' });
+    }
+  });
+
+  app.post('/api/santunan/:id/approve', requireAuth, requireRole(['ADMIN', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { status, keterangan } = req.body;
+
+      if (!status || !['DISETUJUI', 'DITOLAK'].includes(status)) {
+        res.status(400).json({ success: false, message: 'Status persetujuan harus DISETUJUI atau DITOLAK.' });
+        return;
+      }
+
+      const approved = await approveSantunan(id, user.Nama, status, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'APPROVE',
+        Modul: 'SANTUNAN',
+        Record_ID: id,
+        Deskripsi: `Persetujuan santunan ${id} -> ${status}${keterangan ? ` (${keterangan})` : ''}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Santunan ${id} berhasil diproses persetujuan dengan status ${status}.`,
+        data: approved,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses persetujuan santunan.' });
+    }
+  });
+
+  app.post('/api/santunan/:id/disburse', requireAuth, requireRole(['ADMIN', 'BENDAHARA']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { Tanggal_Pencairan, Metode_Pencairan, Nomor_Bukti, Bukti_Pencairan, Keterangan } = req.body;
+
+      if (!Metode_Pencairan) {
+        res.status(400).json({ success: false, message: 'Metode pencairan wajib dipilih (Tunai atau Transfer).' });
+        return;
+      }
+
+      const result = await disburseSantunan(
+        id,
+        {
+          Tanggal_Pencairan,
+          Metode_Pencairan,
+          Nomor_Bukti,
+          Bukti_Pencairan,
+          Keterangan,
+        },
+        user.ID_User,
+        user.Nama
+      );
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'DISBURSE',
+        Modul: 'SANTUNAN',
+        Record_ID: id,
+        Deskripsi: `Pencairan santunan duka ${id} sebesar Rp ${result.santunan.Nominal_Santunan?.toLocaleString('id-ID')} kepada ${result.santunan.Nama_Penerima} (Buku Kas: ${result.cashTransactionId})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Pencairan santunan ${id} berhasil diproses dan otomatis tercatat di Buku Kas (${result.cashTransactionId}).`,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error('Error disbursing santunan:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses pencairan santunan.' });
+    }
+  });
+
+  // ------------------------------------------
+  // 06_BUKU_KAS ROUTES (Automated Ledger)
+  // ------------------------------------------
+  app.get('/api/buku-kas/summary', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (_req: AuthRequest, res: Response) => {
+    try {
+      const summary = await getCashSummary();
+      res.json({ success: true, data: summary });
+    } catch (error) {
+      console.error('Error fetching cash summary:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat ringkasan buku kas.' });
+    }
+  });
+
+  app.get('/api/buku-kas', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      let transactions = await getAllCashTransactions();
+
+      const search = (req.query.search as string || '').toLowerCase().trim();
+      const jenisFilter = req.query.jenis as string;
+      const sumberFilter = req.query.sumber as string;
+      const statusFilter = req.query.status as string;
+      const dariTanggal = req.query.dariTanggal as string;
+      const sampaiTanggal = req.query.sampaiTanggal as string;
+
+      if (search) {
+        transactions = transactions.filter(
+          (t) =>
+            t.ID_Transaksi.toLowerCase().includes(search) ||
+            t.Uraian.toLowerCase().includes(search) ||
+            t.ID_Sumber.toLowerCase().includes(search) ||
+            (t.Nomor_Bukti && t.Nomor_Bukti.toLowerCase().includes(search)) ||
+            (t.Petugas && t.Petugas.toLowerCase().includes(search))
+        );
+      }
+
+      if (jenisFilter && jenisFilter !== 'ALL') {
+        transactions = transactions.filter((t) => t.Jenis_Transaksi === jenisFilter);
+      }
+
+      if (sumberFilter && sumberFilter !== 'ALL') {
+        transactions = transactions.filter((t) => t.Sumber_Transaksi === sumberFilter);
+      }
+
+      if (statusFilter && statusFilter !== 'ALL') {
+        transactions = transactions.filter((t) => t.Status === statusFilter);
+      }
+
+      if (dariTanggal) {
+        transactions = transactions.filter((t) => t.Tanggal >= dariTanggal);
+      }
+
+      if (sampaiTanggal) {
+        transactions = transactions.filter((t) => t.Tanggal <= sampaiTanggal);
+      }
+
+      // Sort by Tanggal desc, ID_Transaksi desc
+      transactions.sort((a, b) => {
+        const cmp = b.Tanggal.localeCompare(a.Tanggal);
+        return cmp !== 0 ? cmp : b.ID_Transaksi.localeCompare(a.ID_Transaksi);
+      });
+
+      const page = parseInt(req.query.page as string, 10) || 1;
+      const limit = parseInt(req.query.limit as string, 10) || 15;
+      const total = transactions.length;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const paginated = transactions.slice((page - 1) * limit, page * limit);
+
+      res.json({
+        success: true,
+        data: paginated,
+        pagination: { total, page, limit, totalPages },
+      });
+    } catch (error) {
+      console.error('Error fetching cash transactions:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat transaksi buku kas.' });
+    }
+  });
+
+  app.get('/api/buku-kas/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const transaction = await getCashTransactionById(id);
+
+      if (!transaction) {
+        res.status(404).json({ success: false, message: `Transaksi ${id} tidak ditemukan.` });
+        return;
+      }
+
+      res.json({ success: true, data: transaction });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Gagal memuat detail transaksi buku kas.' });
+    }
+  });
+
+  app.post('/api/buku-kas/:id/cancel', requireAuth, requireRole(['ADMIN', 'BENDAHARA']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { alasan } = req.body;
+
+      if (!alasan || !alasan.trim()) {
+        res.status(400).json({ success: false, message: 'Alasan pembatalan transaksi wajib diisi.' });
+        return;
+      }
+
+      const cancelled = await cancelCashTransaction(id, alasan.trim(), user.Nama);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'CANCEL',
+        Modul: 'BUKU_KAS',
+        Record_ID: id,
+        Deskripsi: `Membatalkan transaksi buku kas ${id}: ${alasan}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Transaksi ${id} berhasil dibatalkan dan saldo buku kas telah disesuaikan ulang.`,
+        data: cancelled,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal membatalkan transaksi.' });
+    }
+  });
+
+  // ------------------------------------------
+  // 07_PENGELUARAN ROUTES
+  // ------------------------------------------
+  app.get('/api/pengeluaran', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      let expenses = await getAllExpenses();
+
+      const search = (req.query.search as string || '').toLowerCase().trim();
+      const kategoriFilter = req.query.kategori as string;
+      const statusFilter = req.query.status as string;
+
+      if (search) {
+        expenses = expenses.filter(
+          (e) =>
+            e.ID_Pengeluaran.toLowerCase().includes(search) ||
+            e.Uraian.toLowerCase().includes(search) ||
+            (e.Nomor_Bukti && e.Nomor_Bukti.toLowerCase().includes(search)) ||
+            (e.Diajukan_Oleh && e.Diajukan_Oleh.toLowerCase().includes(search))
+        );
+      }
+
+      if (kategoriFilter && kategoriFilter !== 'ALL') {
+        expenses = expenses.filter((e) => e.Kategori === kategoriFilter);
+      }
+
+      if (statusFilter && statusFilter !== 'ALL') {
+        expenses = expenses.filter((e) => e.Status === statusFilter);
+      }
+
+      // Sort by Tanggal_Pengeluaran desc
+      expenses.sort((a, b) => b.Tanggal_Pengeluaran.localeCompare(a.Tanggal_Pengeluaran));
+
+      const page = parseInt(req.query.page as string, 10) || 1;
+      const limit = parseInt(req.query.limit as string, 10) || 10;
+      const total = expenses.length;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const paginated = expenses.slice((page - 1) * limit, page * limit);
+
+      res.json({
+        success: true,
+        data: paginated,
+        pagination: { total, page, limit, totalPages },
+      });
+    } catch (error) {
+      console.error('Error fetching expenses:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat data pengeluaran.' });
+    }
+  });
+
+  app.get('/api/pengeluaran/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const expense = await getExpenseById(id);
+
+      if (!expense) {
+        res.status(404).json({ success: false, message: `Pengeluaran ${id} tidak ditemukan.` });
+        return;
+      }
+
+      res.json({ success: true, data: expense });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Gagal memuat detail pengeluaran.' });
+    }
+  });
+
+  app.post('/api/pengeluaran', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const {
+        Tanggal_Pengeluaran,
+        Kategori,
+        Uraian,
+        Nominal,
+        Metode_Pembayaran,
+        Nomor_Bukti,
+        Bukti_Pengeluaran,
+        Keterangan,
+      } = req.body;
+
+      if (!Kategori || !Uraian || !Nominal) {
+        res.status(400).json({ success: false, message: 'Kategori, Uraian, dan Nominal pengeluaran wajib diisi.' });
+        return;
+      }
+
+      const num = Number(Nominal);
+      if (isNaN(num) || num <= 0) {
+        res.status(400).json({ success: false, message: 'Nominal harus lebih besar dari 0.' });
+        return;
+      }
+
+      const newExpense = await createExpense(
+        {
+          Tanggal_Pengeluaran,
+          Kategori,
+          Uraian,
+          Nominal: num,
+          Metode_Pembayaran,
+          Nomor_Bukti,
+          Bukti_Pengeluaran,
+          Keterangan,
+        },
+        user.Nama
+      );
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'CREATE',
+        Modul: 'PENGELUARAN',
+        Record_ID: newExpense.ID_Pengeluaran,
+        Deskripsi: `Mengajukan pengeluaran [${Kategori}] sebesar Rp ${num.toLocaleString('id-ID')}: ${Uraian}`,
+        Status: 'SUCCESS',
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Pengajuan pengeluaran ${newExpense.ID_Pengeluaran} berhasil dibuat.`,
+        data: newExpense,
+      });
+    } catch (error: any) {
+      console.error('Error creating expense:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal mengajukan pengeluaran.' });
+    }
+  });
+
+  app.put('/api/pengeluaran/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updated = await updateExpense(id, updates);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'UPDATE',
+        Modul: 'PENGELUARAN',
+        Record_ID: id,
+        Deskripsi: `Memperbarui pengajuan pengeluaran ${id}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Pengeluaran ${id} berhasil diperbarui.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui pengeluaran.' });
+    }
+  });
+
+  app.post('/api/pengeluaran/:id/approve', requireAuth, requireRole(['ADMIN', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { status, keterangan } = req.body;
+
+      if (!status || !['DISETUJUI', 'DITOLAK'].includes(status)) {
+        res.status(400).json({ success: false, message: 'Status persetujuan harus DISETUJUI atau DITOLAK.' });
+        return;
+      }
+
+      const approved = await approveExpense(id, user.Nama, status, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'APPROVE',
+        Modul: 'PENGELUARAN',
+        Record_ID: id,
+        Deskripsi: `Persetujuan pengeluaran ${id} -> ${status}${keterangan ? ` (${keterangan})` : ''}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Pengeluaran ${id} berhasil diproses persetujuan dengan status ${status}.`,
+        data: approved,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses persetujuan pengeluaran.' });
+    }
+  });
+
+  app.post('/api/pengeluaran/:id/pay', requireAuth, requireRole(['ADMIN', 'BENDAHARA']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { Tanggal_Pengeluaran, Metode_Pembayaran, Nomor_Bukti, Bukti_Pengeluaran, Keterangan } = req.body;
+
+      const result = await payExpense(
+        id,
+        {
+          Tanggal_Pengeluaran,
+          Metode_Pembayaran,
+          Nomor_Bukti,
+          Bukti_Pengeluaran,
+          Keterangan,
+        },
+        user.ID_User,
+        user.Nama
+      );
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'DISBURSE',
+        Modul: 'PENGELUARAN',
+        Record_ID: id,
+        Deskripsi: `Pembayaran pengeluaran ${id} [${result.expense.Kategori}] sebesar Rp ${result.expense.Nominal.toLocaleString('id-ID')} (Buku Kas: ${result.cashTransactionId})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Pengeluaran ${id} berhasil dibayarkan dan otomatis tercatat di Buku Kas (${result.cashTransactionId}).`,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error('Error paying expense:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses pembayaran pengeluaran.' });
     }
   });
 

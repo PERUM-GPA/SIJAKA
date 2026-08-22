@@ -2,6 +2,7 @@ import { Contribution, PaymentMethod, PaymentStatus } from '../../src/types/inde
 import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
 import { getMemberById } from './anggota.ts';
 import { getParsedSettings } from './settings.ts';
+import { createCashTransaction } from './bukuKas.ts';
 
 export async function getAllContributions(): Promise<Contribution[]> {
   const client = getSheetsClient();
@@ -187,6 +188,26 @@ export async function createContribution(data: {
   const contributions = await getAllContributions();
   const updatedContributions = [newContribution, ...contributions];
   memoryStore.setContributions(updatedContributions);
+
+  // 5. Automatically record entry in 06_BUKU_KAS (Kas Masuk)
+  try {
+    await createCashTransaction({
+      Tanggal: tanggalBayar,
+      Jenis_Transaksi: 'KAS_MASUK',
+      Sumber_Transaksi: 'IURAN',
+      ID_Sumber: newContribution.ID_Iuran,
+      ID_Anggota: newContribution.ID_Anggota,
+      Uraian: `Penerimaan Iuran ${member.Nama} (${newContribution.ID_Anggota}) Periode ${newContribution.Periode_Bulan}/${newContribution.Periode_Tahun}`,
+      Kas_Masuk: newContribution.Nominal,
+      Kas_Keluar: 0,
+      Metode: newContribution.Metode === 'Transfer' ? 'Transfer' : 'Tunai',
+      Nomor_Bukti: `KWT-${newContribution.ID_Iuran}`,
+      Petugas: newContribution.Petugas,
+      Keterangan: newContribution.Keterangan || `Iuran Periode ${newContribution.Periode_Bulan}/${newContribution.Periode_Tahun}`,
+    });
+  } catch (kasErr) {
+    console.error('Error auto-recording contribution to Buku Kas:', kasErr);
+  }
 
   return newContribution;
 }

@@ -534,7 +534,7 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
                 <div className="text-slate-300 leading-relaxed text-xs space-y-1.5">
                   <p>Keanggotaan SIJAKA diperuntukkan bagi:</p>
                   <ul className="list-disc list-inside space-y-1 text-slate-300">
-                    <li>Anggota Jamaah Tahlil Ar-Rohman yang berdomisili di RT 06, RT 07, dan RT 10.</li>
+                    <li>Anggota Jamaah Tahlil Ar-Rohman RT 06, RT 07, dan RT 10.</li>
                     <li>Orang tua kandung atau mertua yang berbeda KK, tetapi berdomisili di RT 06, RT 07, dan RT 10.</li>
                   </ul>
                 </div>

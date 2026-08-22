@@ -8,11 +8,36 @@ export type RTEnum = '06' | '07' | '10';
 
 export type MemberStatus = 'Aktif' | 'Tidak Aktif' | 'Meninggal';
 
-export type UserRole = 'ADMIN' | 'BENDAHARA' | 'PENGURUS' | 'ANGGOTA' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'BENDAHARA' | 'PENGURUS' | 'ANGGOTA';
 
 export type UserStatus = 'Aktif' | 'Tidak Aktif';
 
-export type ActionType = 'LOGIN' | 'LOGOUT' | 'CREATE' | 'UPDATE' | 'DELETE';
+export type ActionType =
+  | 'LOGIN'
+  | 'LOGOUT'
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'VERIFY'
+  | 'APPROVE'
+  | 'DISBURSE'
+  | 'CANCEL'
+  | 'PAY'
+  | 'SYNC'
+  | 'CREATE_LAPORAN_KEMATIAN'
+  | 'UPDATE_LAPORAN_KEMATIAN'
+  | 'VERIFY_LAPORAN_KEMATIAN'
+  | 'APPROVE_LAPORAN_KEMATIAN'
+  | 'CREATE_SANTUNAN'
+  | 'VERIFY_SANTUNAN'
+  | 'APPROVE_SANTUNAN'
+  | 'DISBURSE_SANTUNAN'
+  | 'CREATE_PENGELUARAN'
+  | 'APPROVE_PENGELUARAN'
+  | 'PAY_PENGELUARAN'
+  | 'CREATE_BUKU_KAS'
+  | 'UPDATE_BUKU_KAS'
+  | 'CANCEL_BUKU_KAS';
 
 // 01_ANGGOTA
 export interface Member {
@@ -93,51 +118,153 @@ export interface ContributionSummary {
   totalNominalTunggakan: number;
 }
 
-// 04_LAPORAN_KEMATIAN (Placeholder for Phase 2+)
+// 04_LAPORAN_KEMATIAN
+export type DeathReportStatus = 'DIAJUKAN' | 'DIVERIFIKASI' | 'DISETUJUI' | 'DITOLAK' | 'SELESAI';
+export type DeathReportHubungan =
+  | 'Kepala Keluarga'
+  | 'Pasangan'
+  | 'Anak'
+  | 'Orang Tua'
+  | 'Tanggungan'
+  | 'Ahli Waris'
+  | 'Pengurus'
+  | 'Lainnya';
+
 export interface DeathReport {
-  ID_Kematian: string;
+  ID_Laporan: string;
   ID_Anggota: string;
-  ID_Keluarga?: string;
-  Tanggal_Meninggal: string;
-  Tempat_Meninggal: string;
-  Penyebab?: string;
-  Tanggal_Lapor: string;
+  Tanggal_Lapor: string; // YYYY-MM-DD
   Pelapor: string;
-  Status_Verifikasi: 'Menunggu' | 'Terverifikasi' | 'Ditolak';
+  Hubungan_Pelapor: DeathReportHubungan;
+  Waktu_Kematian: string; // YYYY-MM-DD HH:mm or ISO
+  Tempat_Kematian: string;
+  Penyebab_Kematian?: string;
+  Dokumen_Pendukung?: string;
+  Status: DeathReportStatus;
+  Diverifikasi_Oleh?: string; // ID_User
+  Tanggal_Verifikasi?: string;
+  Disetujui_Oleh?: string; // ID_User
+  Tanggal_Persetujuan?: string;
+  Keterangan?: string;
+  Tanggal_Dibuat: string;
+  Tanggal_Diperbarui: string;
+  // Enriched
+  namaAnggota?: string;
+  noKk?: string;
+  rtAnggota?: string;
+  namaDiverifikasi?: string;
+  namaDisetujui?: string;
 }
 
-// 05_SANTUNAN (Placeholder for Phase 2+)
+// 05_SANTUNAN
+export type SantunanVerifikasiStatus = 'MENUNGGU' | 'TERVERIFIKASI' | 'DITOLAK';
+export type SantunanPersetujuanStatus = 'MENUNGGU' | 'DISETUJUI' | 'DITOLAK';
+export type SantunanMetodePencairan = 'Tunai' | 'Transfer';
+
 export interface Compensation {
   ID_Santunan: string;
-  ID_Kematian: string;
+  ID_Laporan: string;
   ID_Anggota: string;
-  Nominal: number;
-  Tanggal_Serah: string;
-  Penerima: string;
-  Status_Penyaluran: 'Diproses' | 'Diserahkan' | 'Tertunda';
+  ID_AhliWaris: string;
+  Nama_Penerima: string;
+  Hubungan_Penerima: string;
+  Nominal_Santunan: number; // default 600000
+  Tanggal_Pengajuan: string;
+  Status_Verifikasi: SantunanVerifikasiStatus;
+  Diverifikasi_Oleh?: string; // ID_User
+  Tanggal_Verifikasi?: string;
+  Status_Persetujuan: SantunanPersetujuanStatus;
+  Disetujui_Oleh?: string; // ID_User
+  Tanggal_Persetujuan?: string;
+  Tanggal_Pencairan?: string;
+  Metode_Pencairan?: SantunanMetodePencairan;
+  Nomor_Bukti?: string;
+  Bukti_Pencairan?: string;
+  Keterangan?: string;
+  Tanggal_Dibuat: string;
+  Tanggal_Diperbarui: string;
+  // Enriched
+  namaAnggota?: string;
+  rtAnggota?: string;
+  namaPelapor?: string;
+  namaDiverifikasi?: string;
+  namaDisetujui?: string;
 }
 
-// 06_BUKU_KAS (Placeholder for Phase 2+)
+// Alias for convenience
+export type Santunan = Compensation;
+
+// 06_BUKU_KAS
+export type CashTransactionJenis = 'KAS_MASUK' | 'KAS_KELUAR';
+export type CashTransactionSumber = 'IURAN' | 'SANTUNAN' | 'PENGELUARAN' | 'PENYESUAIAN' | 'LAINNYA';
+export type CashTransactionStatus = 'VALID' | 'DIBATALKAN';
+export type CashTransactionMetode = 'Tunai' | 'Transfer';
+
 export interface CashTransaction {
-  ID_Kas: string;
+  ID_Transaksi: string;
   Tanggal: string;
-  Jenis: 'Pemasukan' | 'Pengeluaran';
-  Kategori: string;
-  Nominal: number;
+  Jenis_Transaksi: CashTransactionJenis;
+  Sumber_Transaksi: CashTransactionSumber;
+  ID_Sumber: string;
+  ID_Anggota?: string;
+  Uraian: string;
+  Kas_Masuk: number;
+  Kas_Keluar: number;
   Saldo: number;
-  Keterangan: string;
-  ID_User: string;
+  Metode: CashTransactionMetode;
+  Nomor_Bukti?: string;
+  Petugas: string;
+  Status: CashTransactionStatus;
+  Keterangan?: string;
+  Tanggal_Dibuat: string;
+  // Enriched
+  namaAnggota?: string;
 }
 
-// 07_PENGELUARAN (Placeholder for Phase 2+)
+export interface CashSummary {
+  saldoKas: number;
+  totalPemasukan: number;
+  totalPengeluaran: number;
+  totalIuranTerkumpul: number;
+  totalSantunanTersalur: number;
+  totalPengeluaranOperasional: number;
+  pemasukanBulanIni: number;
+  pengeluaranBulanIni: number;
+  totalTransaksiValid: number;
+}
+
+// 07_PENGELUARAN
+export type ExpenseCategory =
+  | 'Operasional'
+  | 'Administrasi'
+  | 'Kegiatan Jamaah'
+  | 'Sosial'
+  | 'Perlengkapan'
+  | 'Transportasi'
+  | 'Lainnya';
+
+export type ExpenseStatus = 'DIAJUKAN' | 'DISETUJUI' | 'DITOLAK' | 'DIBAYARKAN';
+export type ExpensePaymentMethod = 'Tunai' | 'Transfer';
+
 export interface Expense {
   ID_Pengeluaran: string;
-  Tanggal: string;
-  Kategori: string;
+  Tanggal_Pengeluaran: string;
+  Kategori: ExpenseCategory;
+  Uraian: string;
   Nominal: number;
-  Keterangan: string;
-  Bukti_Foto?: string;
-  ID_User: string;
+  Metode_Pembayaran: ExpensePaymentMethod;
+  Nomor_Bukti?: string;
+  Bukti_Pengeluaran?: string;
+  Diajukan_Oleh: string; // ID_User
+  Disetujui_Oleh?: string; // ID_User
+  Tanggal_Persetujuan?: string;
+  Status: ExpenseStatus;
+  Keterangan?: string;
+  Tanggal_Dibuat: string;
+  Tanggal_Diperbarui: string;
+  // Enriched
+  namaDiajukan?: string;
+  namaDisetujui?: string;
 }
 
 // 08_USERS
@@ -215,6 +342,12 @@ export interface DashboardMetrics {
   jumlahBelumBayar?: number;
   totalTunggakanNominal?: number;
   totalKas?: number;
+  saldoKas?: number;
+  totalPemasukan?: number;
+  totalPengeluaran?: number;
+  totalLaporanKematian?: number;
+  laporanPending?: number;
+  santunanPending?: number;
   iuranBulanan?: number;
   nominalSantunan?: number;
   masaTungguHari?: number;
