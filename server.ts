@@ -12,6 +12,8 @@ import {
 } from './lib/googleSheets/anggota.ts';
 import {
   getUserByUsername,
+  getUserByUsernameOrNoKK,
+  changeUserPassword,
   getAllSafeUsers,
   createUser,
   verifyUserPassword,
@@ -72,6 +74,16 @@ import {
   approveExpense,
   payExpense,
 } from './lib/googleSheets/pengeluaran.ts';
+import {
+  getFinancialSummaryReport,
+  getCashbookReport,
+  getIuranReport,
+  getSantunanReport,
+  getPengeluaranReport,
+  ReportFilterOptions,
+} from './lib/googleSheets/reports.ts';
+import { runFinancialReconciliation } from './lib/googleSheets/reconciliation.ts';
+import * as XLSX from 'xlsx';
 import { isGoogleSheetsConfigured } from './lib/googleSheets/client.ts';
 import { Member, DashboardMetrics } from './src/types/index.ts';
 
@@ -266,20 +278,54 @@ async function startServer() {
   });
 
   // ------------------------------------------
-  // AUTH ROUTES
+  // AUTH ROUTES & RATE LIMITING
   // ------------------------------------------
+  const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+  const MAX_LOGIN_ATTEMPTS = 5;
+  const LOGIN_WINDOW_MS = 60 * 1000; // 1 minute
 
-  // Login
+  function checkLoginRateLimit(key: string): { blocked: boolean; waitSeconds?: number } {
+    const now = Date.now();
+    const record = loginAttempts.get(key);
+    if (!record || now - record.lastAttempt > LOGIN_WINDOW_MS) {
+      loginAttempts.set(key, { count: 1, lastAttempt: now });
+      return { blocked: false };
+    }
+    if (record.count >= MAX_LOGIN_ATTEMPTS) {
+      const waitSeconds = Math.ceil((LOGIN_WINDOW_MS - (now - record.lastAttempt)) / 1000);
+      return { blocked: true, waitSeconds };
+    }
+    record.count += 1;
+    record.lastAttempt = now;
+    return { blocked: false };
+  }
+
+  function resetLoginRateLimit(key: string): void {
+    loginAttempts.delete(key);
+  }
+
+  // Login (Supports Username or No_KK for Anggota)
   app.post('/api/auth/login', async (req: Request, res: Response) => {
     try {
       const { username, password } = req.body;
+      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+      const rateLimitKey = `${clientIp}_${username || ''}`;
 
       if (!username || !password) {
         res.status(400).json({ success: false, message: 'Username dan password wajib diisi.' });
         return;
       }
 
-      const user = await getUserByUsername(username);
+      const rateCheck = checkLoginRateLimit(rateLimitKey);
+      if (rateCheck.blocked) {
+        res.status(429).json({
+          success: false,
+          message: `Terlalu banyak percobaan login gagal. Silakan tunggu ${rateCheck.waitSeconds} detik sebelum mencoba lagi.`,
+        });
+        return;
+      }
+
+      const user = await getUserByUsernameOrNoKK(username);
       if (!user) {
         res.status(401).json({ success: false, message: 'Username atau password salah.' });
         return;
@@ -296,6 +342,9 @@ async function startServer() {
         return;
       }
 
+      // Reset rate limit on successful authentication
+      resetLoginRateLimit(rateLimitKey);
+
       // Update last login
       await updateLastLogin(user.ID_User);
 
@@ -311,7 +360,7 @@ async function startServer() {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
-      // Log Login Activity
+      // Log Login Activity (NEVER log passwords)
       await createActivityLog({
         ID_User: user.ID_User,
         Nama_User: user.Nama,
@@ -331,6 +380,55 @@ async function startServer() {
     } catch (error: any) {
       console.error('Login error:', error);
       res.status(500).json({ success: false, message: 'Gagal terhubung ke database. Silakan coba lagi.' });
+    }
+  });
+
+  // Change Password (All Authenticated Users)
+  app.post('/api/auth/change-password', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { oldPassword, newPassword, confirmPassword } = req.body;
+
+      if (!oldPassword || !newPassword || !confirmPassword) {
+        res.status(400).json({ success: false, message: 'Semua kolom password wajib diisi.' });
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        res.status(400).json({ success: false, message: 'Konfirmasi password baru tidak cocok.' });
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        res.status(400).json({ success: false, message: 'Password baru minimal harus 6 karakter.' });
+        return;
+      }
+
+      if (oldPassword === newPassword) {
+        res.status(400).json({ success: false, message: 'Password baru tidak boleh sama dengan password lama.' });
+        return;
+      }
+
+      await changeUserPassword(user.ID_User, oldPassword, newPassword);
+
+      // Log password change activity (without credentials)
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'CHANGE_PASSWORD',
+        Modul: 'AUTH',
+        Record_ID: user.ID_User,
+        Deskripsi: `User ${user.Username} (${user.Role}) berhasil memperbarui kata sandi`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: 'Password Anda berhasil diperbarui. Silakan gunakan password baru pada sesi berikutnya.',
+      });
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal mengubah password.' });
     }
   });
 
@@ -362,6 +460,257 @@ async function startServer() {
       success: true,
       user: req.user,
     });
+  });
+
+  // ==========================================
+  // MEMBER SELF-SERVICE ROUTES (PHASE 5)
+  // Strict Anti-IDOR: Scoped exclusively to req.user.ID_Anggota
+  // ==========================================
+
+  // Get current member's full profile (KK, Families, Contributions, Arrears, Policy Info)
+  app.get('/api/member/my-profile', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      if (!user.ID_Anggota) {
+        res.status(404).json({ success: false, message: 'Akun Anda belum ditautkan dengan data anggota KK.' });
+        return;
+      }
+
+      const [member, families, contributions, arrears, settings] = await Promise.all([
+        getMemberById(user.ID_Anggota),
+        getFamiliesByMemberId(user.ID_Anggota),
+        getContributionsByMemberId(user.ID_Anggota),
+        calculateMemberArrears(user.ID_Anggota),
+        getParsedSettings(),
+      ]);
+
+      if (!member) {
+        res.status(404).json({ success: false, message: 'Data anggota KK tidak ditemukan.' });
+        return;
+      }
+
+      // Sort contributions desc
+      contributions.sort((a, b) => {
+        if (b.Periode_Tahun !== a.Periode_Tahun) return b.Periode_Tahun - a.Periode_Tahun;
+        return b.Periode_Bulan - a.Periode_Bulan;
+      });
+
+      const isInternalStaff = ['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user.Role);
+
+      res.json({
+        success: true,
+        data: {
+          member,
+          families,
+          contributions,
+          arrears,
+          policy: {
+            namaLembaga: settings.NAMA_LEMBAGA,
+            wilayah: settings.WILAYAH,
+            iuranBulanan: settings.IURAN_BULANAN,
+            // RBAC: ANGGOTA and PUBLIC do not receive nominal santunan.
+            // ADMIN, BENDAHARA, PENGURUS receive it as patokan/acuan internal only.
+            ...(isInternalStaff ? { patokanSantunan: settings.NOMINAL_SANTUNAN } : {}),
+            masaTungguHari: settings.MASA_TUNGGU_HARI,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching member profile:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat profil data anggota.' });
+    }
+  });
+
+  // Member Self-Service: Update KK Contact & Address
+  app.put('/api/member/self-service/profile', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      if (!user.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Akun tidak terhubung dengan data anggota.' });
+        return;
+      }
+
+      const { No_HP, Alamat, Keterangan } = req.body;
+      const updates: Partial<Member> = {};
+
+      if (No_HP !== undefined) updates.No_HP = String(No_HP).trim();
+      if (Alamat !== undefined) updates.Alamat = String(Alamat).trim();
+      if (Keterangan !== undefined) updates.Keterangan = String(Keterangan).trim();
+
+      const updated = await updateMember(user.ID_Anggota, updates);
+
+      // Audit Log
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'UPDATE_PROFILE',
+        Modul: 'ANGGOTA',
+        Record_ID: user.ID_Anggota,
+        Deskripsi: `Anggota ${user.Nama} (${user.ID_Anggota}) memperbarui kontak/alamat profil mandiri`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: 'Informasi kontak dan alamat KK berhasil diperbarui.',
+        data: updated,
+      });
+    } catch (error: any) {
+      console.error('Error updating member self-service profile:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui profil KK.' });
+    }
+  });
+
+  // Member Self-Service: Add Family Member to Own KK
+  app.post('/api/member/self-service/keluarga', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      if (!user.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Akun tidak terhubung dengan data anggota.' });
+        return;
+      }
+
+      const { NIK, Nama, Tempat_Lahir, Tanggal_Lahir, Hubungan, No_HP, Calon_Ahli_Waris, Keterangan } = req.body;
+
+      if (!Nama || !Hubungan) {
+        res.status(400).json({ success: false, message: 'Nama anggota keluarga dan Hubungan wajib diisi.' });
+        return;
+      }
+
+      const validRelations = ['Suami', 'Istri', 'Anak', 'Orang Tua', 'Lainnya'];
+      if (!validRelations.includes(Hubungan)) {
+        res.status(400).json({ success: false, message: `Hubungan tidak valid. Pilih dari: ${validRelations.join(', ')}` });
+        return;
+      }
+
+      const newFamily = await createFamily({
+        ID_Anggota: user.ID_Anggota,
+        NIK: NIK || '',
+        Nama,
+        Tempat_Lahir: Tempat_Lahir || '',
+        Tanggal_Lahir: Tanggal_Lahir || '',
+        Hubungan,
+        No_HP: No_HP || '',
+        Status: 'Aktif',
+        Calon_Ahli_Waris: Calon_Ahli_Waris || 'Tidak',
+        Keterangan: Keterangan || 'Ditambahkan mandiri oleh anggota',
+      });
+
+      // Audit Log
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'SUBMIT_DATA_CHANGE',
+        Modul: 'KELUARGA',
+        Record_ID: newFamily.ID_Keluarga,
+        Deskripsi: `Anggota ${user.Nama} menambahkan keluarga mandiri: ${newFamily.Nama} (${newFamily.Hubungan})`,
+        Status: 'SUCCESS',
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Data keluarga ${newFamily.Nama} berhasil ditambahkan ke KK Anda.`,
+        data: newFamily,
+      });
+    } catch (error: any) {
+      console.error('Error in self-service add family:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal menambahkan data keluarga.' });
+    }
+  });
+
+  // Member Self-Service: Update Family Member in Own KK
+  app.put('/api/member/self-service/keluarga/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      if (!user.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Akun tidak terhubung dengan data anggota.' });
+        return;
+      }
+
+      const family = await getFamilyById(id);
+      if (!family) {
+        res.status(404).json({ success: false, message: 'Data keluarga tidak ditemukan.' });
+        return;
+      }
+
+      // Anti-IDOR: strictly enforce ownership
+      if (family.ID_Anggota !== user.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Anda tidak memiliki hak akses untuk mengubah data ini.' });
+        return;
+      }
+
+      const updates = req.body;
+      const updated = await updateFamily(id, updates);
+
+      // Audit Log
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'SUBMIT_DATA_CHANGE',
+        Modul: 'KELUARGA',
+        Record_ID: id,
+        Deskripsi: `Anggota ${user.Nama} memperbarui data keluarga mandiri: ${updated.Nama}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Data keluarga ${updated.Nama} berhasil diperbarui.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      console.error('Error in self-service update family:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui data keluarga.' });
+    }
+  });
+
+  // Member Self-Service: Soft Delete Family Member in Own KK
+  app.delete('/api/member/self-service/keluarga/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      if (!user.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Akun tidak terhubung dengan data anggota.' });
+        return;
+      }
+
+      const family = await getFamilyById(id);
+      if (!family) {
+        res.status(404).json({ success: false, message: 'Data keluarga tidak ditemukan.' });
+        return;
+      }
+
+      // Anti-IDOR: strictly enforce ownership
+      if (family.ID_Anggota !== user.ID_Anggota) {
+        res.status(403).json({ success: false, message: 'Anda tidak memiliki hak akses untuk menonaktifkan data ini.' });
+        return;
+      }
+
+      const updated = await softDeleteFamily(id);
+
+      // Audit Log
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'SUBMIT_DATA_CHANGE',
+        Modul: 'KELUARGA',
+        Record_ID: id,
+        Deskripsi: `Anggota ${user.Nama} menonaktifkan data keluarga mandiri: ${updated.Nama}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Data keluarga ${updated.Nama} berhasil dinonaktifkan.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      console.error('Error in self-service delete family:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal menonaktifkan data keluarga.' });
+    }
   });
 
   // ------------------------------------------
@@ -1795,7 +2144,7 @@ async function startServer() {
         Aksi: 'DISBURSE',
         Modul: 'SANTUNAN',
         Record_ID: id,
-        Deskripsi: `Pencairan santunan duka ${id} sebesar Rp ${result.santunan.Nominal_Santunan?.toLocaleString('id-ID')} kepada ${result.santunan.Nama_Penerima} (Buku Kas: ${result.cashTransactionId})`,
+        Deskripsi: `Pencairan santunan duka ${id} sebesar Rp ${(result.santunan.Nominal_Santunan || 0).toLocaleString('id-ID')} kepada ${result.santunan.Nama_Penerima} (Buku Kas: ${result.cashTransactionId})`,
         Status: 'SUCCESS',
       });
 
@@ -2265,6 +2614,362 @@ async function startServer() {
       res.json({ success: true, message: `Setting ${key} berhasil diperbarui.`, data: updated });
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui setting.' });
+    }
+  });
+
+  // ==========================================
+  // PHASE 4: REPORTS & RECONCILIATION ROUTES
+  // ==========================================
+
+  // 1. Summary Report
+  app.get('/api/reports/summary', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const filter: ReportFilterOptions = {
+        period: req.query.period as any,
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string,
+        rt: req.query.rt as any,
+        jenisTransaksi: req.query.jenisTransaksi as any,
+      };
+
+      const report = await getFinancialSummaryReport(filter);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VIEW_REPORT' as any,
+        Modul: 'LAPORAN_KEUANGAN',
+        Record_ID: 'SUMMARY',
+        Deskripsi: `Melihat Ringkasan Laporan Keuangan (${report.periodInfo.label}, RT: ${filter.rt || 'Semua'})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memuat ringkasan laporan keuangan.' });
+    }
+  });
+
+  // 2. Cashbook Report
+  app.get('/api/reports/cashbook', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const filter: ReportFilterOptions = {
+        period: req.query.period as any,
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string,
+        rt: req.query.rt as any,
+        jenisTransaksi: req.query.jenisTransaksi as any,
+        status: req.query.status as string,
+      };
+
+      const report = await getCashbookReport(filter);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VIEW_REPORT' as any,
+        Modul: 'BUKU_KAS',
+        Record_ID: 'CASHBOOK_REPORT',
+        Deskripsi: `Melihat Laporan Buku Kas (${report.periodInfo.label}, Total: ${report.summary.totalRecords} transaksi)`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memuat laporan buku kas.' });
+    }
+  });
+
+  // 3. Iuran Report
+  app.get('/api/reports/iuran', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const filter: ReportFilterOptions = {
+        period: req.query.period as any,
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string,
+        rt: req.query.rt as any,
+        status: req.query.status as string,
+      };
+
+      const report = await getIuranReport(filter);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VIEW_REPORT' as any,
+        Modul: 'IURAN',
+        Record_ID: 'IURAN_REPORT',
+        Deskripsi: `Melihat Rekap Iuran (${report.periodInfo.label}, Kepatuhan: ${report.summary.persentaseKepatuhan}%)`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memuat rekap iuran.' });
+    }
+  });
+
+  // 4. Santunan Report
+  app.get('/api/reports/santunan', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const filter: ReportFilterOptions = {
+        period: req.query.period as any,
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string,
+        rt: req.query.rt as any,
+        status: req.query.status as string,
+      };
+
+      const report = await getSantunanReport(filter);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VIEW_REPORT' as any,
+        Modul: 'SANTUNAN',
+        Record_ID: 'SANTUNAN_REPORT',
+        Deskripsi: `Melihat Rekap Santunan (${report.periodInfo.label}, Dicairkan: Rp ${(report.summary?.totalNominalDicairkan || 0).toLocaleString('id-ID')})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memuat rekap santunan.' });
+    }
+  });
+
+  // 5. Pengeluaran Report
+  app.get('/api/reports/pengeluaran', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const filter: ReportFilterOptions = {
+        period: req.query.period as any,
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string,
+        kategori: req.query.kategori as string,
+        status: req.query.status as string,
+      };
+
+      const report = await getPengeluaranReport(filter);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VIEW_REPORT' as any,
+        Modul: 'PENGELUARAN',
+        Record_ID: 'PENGELUARAN_REPORT',
+        Deskripsi: `Melihat Rekap Pengeluaran (${report.periodInfo.label}, Dibayarkan: Rp ${(report.summary?.totalNominalDibayar || 0).toLocaleString('id-ID')})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memuat rekap pengeluaran.' });
+    }
+  });
+
+  // 6. Reconciliation Engine
+  app.get('/api/reports/reconciliation', requireAuth, requireRole(['ADMIN', 'BENDAHARA']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const report = await runFinancialReconciliation();
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'RUN_RECONCILIATION' as any,
+        Modul: 'REKONSILIASI',
+        Record_ID: 'RECONCILIATION_RUN',
+        Deskripsi: `Menjalankan Rekonsiliasi Kas: Status ${report.reconciliationStatus} (Saldo: Rp ${(report.ledger?.saldoBukuKas || 0).toLocaleString('id-ID')}, Selisih: Rp ${(report.ledger?.selisih || 0).toLocaleString('id-ID')})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message || 'Gagal menjalankan rekonsiliasi kas.' });
+    }
+  });
+
+  // 7. Export Excel Server Endpoint
+  app.get('/api/reports/export/excel', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const filter: ReportFilterOptions = {
+        period: req.query.period as any,
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string,
+        rt: req.query.rt as any,
+      };
+
+      const [summaryReport, cashbookReport, iuranReport, santunanReport, pengeluaranReport, reconciliationReport] = await Promise.all([
+        getFinancialSummaryReport(filter),
+        getCashbookReport(filter),
+        getIuranReport(filter),
+        getSantunanReport(filter),
+        getPengeluaranReport(filter),
+        runFinancialReconciliation(),
+      ]);
+
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Ringkasan
+      const ringkasanData = [
+        ['SIJAKA - Sistem Informasi Jaminan Kematian'],
+        ['Jamaah Tahlil Ar Rohman RT 06, RT 07, RT 10 Perum GPA Ngijo'],
+        ['LAPORAN REKAPITULASI KEUANGAN'],
+        ['Periode:', summaryReport.periodInfo.label],
+        ['Waktu Export:', new Date().toLocaleString('id-ID')],
+        ['Petugas Export:', `${user.Nama} (${user.Role})`],
+        [''],
+        ['RINGKASAN UTAMA', 'NOMINAL (IDR)'],
+        ['Total Kas Masuk (Periode)', summaryReport.totalKasMasukPeriode],
+        ['Total Kas Keluar (Periode)', summaryReport.totalKasKeluarPeriode],
+        ['Surplus / Defisit (Periode)', summaryReport.surplusDefisitPeriode],
+        ['Saldo Kas Buku Kas (Aktif)', summaryReport.saldoKasSekarang],
+        [''],
+        ['RINCIAN PER MODUL', 'NOMINAL (IDR)', 'JUMLAH TRANSAKSI'],
+        ['Total Iuran Terkumpul', summaryReport.totalIuranPeriode, summaryReport.jumlahTransaksi.iuran],
+        ['Total Santunan Dicairkan', summaryReport.totalSantunanPeriode, summaryReport.jumlahTransaksi.santunan],
+        ['Total Pengeluaran Operasional', summaryReport.totalPengeluaranPeriode, summaryReport.jumlahTransaksi.pengeluaran],
+        [''],
+        ['KEPATUHAN IURAN', 'NILAI'],
+        ['Total KK Aktif', summaryReport.anggotaMetrics.kkAktif],
+        ['KK Sudah Membayar', iuranReport.summary.kkSudahBayar],
+        ['KK Belum Membayar', iuranReport.summary.kkBelumBayar],
+        ['Persentase Kepatuhan (%)', `${iuranReport.summary.persentaseKepatuhan}%`],
+      ];
+      const wsRingkasan = XLSX.utils.aoa_to_sheet(ringkasanData);
+      XLSX.utils.book_append_sheet(wb, wsRingkasan, 'Ringkasan');
+
+      // Sheet 2: Buku Kas
+      const cashRows = [
+        ['Tanggal', 'ID Transaksi', 'Jenis', 'Sumber', 'ID Sumber', 'Nama Anggota', 'RT', 'Uraian', 'Kas Masuk', 'Kas Keluar', 'Saldo', 'Status', 'Petugas'],
+        ...cashbookReport.items.map((t) => [
+          t.Tanggal,
+          t.ID_Transaksi,
+          t.Jenis_Transaksi,
+          t.Sumber_Transaksi,
+          t.ID_Sumber,
+          t.namaAnggota || '-',
+          t.rtAnggota || '-',
+          t.Uraian,
+          t.Kas_Masuk || 0,
+          t.Kas_Keluar || 0,
+          t.Saldo,
+          t.Status,
+          t.Petugas,
+        ]),
+        ['', '', '', '', '', '', 'TOTAL', '', cashbookReport.summary.totalMasuk, cashbookReport.summary.totalKeluar, '', '', ''],
+      ];
+      const wsCash = XLSX.utils.aoa_to_sheet(cashRows);
+      XLSX.utils.book_append_sheet(wb, wsCash, 'Buku Kas');
+
+      // Sheet 3: Iuran
+      const iuranRows = [
+        ['ID Iuran', 'ID Anggota', 'Nama Kepala Keluarga', 'RT', 'Periode Bulan', 'Periode Tahun', 'Tanggal Bayar', 'Metode', 'Nominal', 'Status', 'Petugas'],
+        ...iuranReport.items.map((i) => [
+          i.ID_Iuran,
+          i.ID_Anggota,
+          i.namaKepalaKeluarga,
+          i.rt,
+          i.Periode_Bulan,
+          i.Periode_Tahun,
+          i.Tanggal_Bayar,
+          i.Metode,
+          i.Nominal,
+          i.Status,
+          i.Petugas,
+        ]),
+        ['', '', '', '', '', '', '', 'TOTAL', iuranReport.summary.totalNominal, '', ''],
+      ];
+      const wsIuran = XLSX.utils.aoa_to_sheet(iuranRows);
+      XLSX.utils.book_append_sheet(wb, wsIuran, 'Iuran');
+
+      // Sheet 4: Santunan
+      const santunanRows = [
+        ['ID Santunan', 'ID Laporan', 'Nama Almarhum', 'RT', 'Nama Penerima', 'Hubungan', 'Nominal', 'Status Verifikasi', 'Status Persetujuan', 'Tanggal Pengajuan', 'Tanggal Pencairan', 'Metode', 'No Bukti'],
+        ...santunanReport.items.map((s) => [
+          s.ID_Santunan,
+          s.ID_Laporan,
+          s.namaAnggota || '-',
+          s.rt || '-',
+          s.Nama_Penerima,
+          s.Hubungan_Penerima,
+          s.Nominal_Santunan,
+          s.Status_Verifikasi,
+          s.Status_Persetujuan,
+          s.Tanggal_Pengajuan,
+          s.Tanggal_Pencairan || '-',
+          s.Metode_Pencairan || '-',
+          s.Nomor_Bukti || '-',
+        ]),
+        ['', '', '', '', '', 'TOTAL DICAIRKAN', santunanReport.summary.totalNominalDicairkan, '', '', '', '', '', ''],
+      ];
+      const wsSantunan = XLSX.utils.aoa_to_sheet(santunanRows);
+      XLSX.utils.book_append_sheet(wb, wsSantunan, 'Santunan');
+
+      // Sheet 5: Pengeluaran
+      const expenseRows = [
+        ['ID Pengeluaran', 'Tanggal', 'Kategori', 'Uraian', 'Nominal', 'Status', 'Metode', 'No Bukti', 'Keterangan'],
+        ...pengeluaranReport.items.map((e) => [
+          e.ID_Pengeluaran,
+          e.Tanggal_Pengeluaran,
+          e.Kategori,
+          e.Uraian,
+          e.Nominal,
+          e.Status,
+          e.Metode_Pembayaran,
+          e.Nomor_Bukti || '-',
+          e.Keterangan || '-',
+        ]),
+        ['', '', '', 'TOTAL DIBAYARKAN', pengeluaranReport.summary.totalNominalDibayar, '', '', '', ''],
+      ];
+      const wsExpenses = XLSX.utils.aoa_to_sheet(expenseRows);
+      XLSX.utils.book_append_sheet(wb, wsExpenses, 'Pengeluaran');
+
+      // Sheet 6: Rekonsiliasi
+      const reconRows = [
+        ['REKONSILIASI KEUANGAN BUKU KAS SIJAKA'],
+        ['Status Rekonsiliasi:', reconciliationReport.reconciliationStatus],
+        ['Total Kas Masuk Valid:', reconciliationReport.ledger.totalKasMasuk],
+        ['Total Kas Keluar Valid:', reconciliationReport.ledger.totalKasKeluar],
+        ['Formula:', 'Kas Masuk - Kas Keluar'],
+        ['Expected Saldo:', reconciliationReport.ledger.expectedSaldo],
+        ['Saldo Riil Buku Kas:', reconciliationReport.ledger.saldoBukuKas],
+        ['Selisih:', reconciliationReport.ledger.selisih],
+        [''],
+        ['INTEGRITY CHECKS', 'STATUS', 'DETAIL'],
+        ...reconciliationReport.integrityChecks.checks.map((c) => [
+          `${c.checkNumber}. ${c.title}`,
+          c.status,
+          c.details,
+        ]),
+      ];
+      const wsRecon = XLSX.utils.aoa_to_sheet(reconRows);
+      XLSX.utils.book_append_sheet(wb, wsRecon, 'Rekonsiliasi');
+
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'EXPORT_EXCEL' as any,
+        Modul: 'LAPORAN_EXPORT',
+        Record_ID: 'EXCEL_EXPORT',
+        Deskripsi: `Mengekspor Laporan Lengkap SIJAKA ke Excel (${summaryReport.periodInfo.label})`,
+        Status: 'SUCCESS',
+      });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="SIJAKA_Laporan_${summaryReport.periodInfo.startDate}_${summaryReport.periodInfo.endDate}.xlsx"`);
+      res.send(buf);
+    } catch (error: any) {
+      console.error('Error exporting Excel:', error);
+      res.status(500).json({ success: false, message: error.message || 'Gagal mengekspor laporan ke Excel.' });
     }
   });
 

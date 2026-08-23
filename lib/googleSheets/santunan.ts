@@ -113,6 +113,14 @@ export async function createSantunan(input: {
     throw new Error(`Laporan Kematian ${input.ID_Laporan} tidak ditemukan.`);
   }
 
+  if (report.ID_Anggota !== input.ID_Anggota) {
+    throw new Error(`ID Anggota ${input.ID_Anggota} tidak sesuai dengan Laporan Kematian ${input.ID_Laporan} (${report.ID_Anggota}).`);
+  }
+
+  if (report.Status === 'DITOLAK') {
+    throw new Error(`Laporan Kematian ${input.ID_Laporan} berstatus DITOLAK.`);
+  }
+
   // Check if santunan already created for this report
   const existing = await getSantunanByLaporanId(input.ID_Laporan);
   if (existing) {
@@ -308,6 +316,14 @@ export async function disburseSantunan(
 
   if (current.Status_Persetujuan !== 'DISETUJUI') {
     throw new Error(`Santunan ${id} belum disetujui. Status persetujuan saat ini: ${current.Status_Persetujuan}.`);
+  }
+
+  const report = await getDeathReportById(current.ID_Laporan);
+  if (!report) {
+    throw new Error(`Laporan Kematian ${current.ID_Laporan} tidak ditemukan.`);
+  }
+  if (report.Status !== 'DISETUJUI' && report.Status !== 'SELESAI') {
+    throw new Error(`Laporan Kematian ${current.ID_Laporan} belum disetujui. Status laporan: ${report.Status}.`);
   }
 
   const member = await getMemberById(current.ID_Anggota);

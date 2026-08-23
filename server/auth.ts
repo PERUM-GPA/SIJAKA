@@ -18,6 +18,7 @@ export function generateToken(user: SafeUser): string {
       Username: user.Username,
       Role: user.Role,
       Status: user.Status,
+      MustChangePassword: user.MustChangePassword,
     },
     JWT_SECRET,
     { expiresIn: '7d' }

@@ -24,6 +24,11 @@ export type ActionType =
   | 'CANCEL'
   | 'PAY'
   | 'SYNC'
+  | 'CHANGE_PASSWORD'
+  | 'UPDATE_PROFILE'
+  | 'SUBMIT_DATA_CHANGE'
+  | 'APPROVE_DATA_CHANGE'
+  | 'REJECT_DATA_CHANGE'
   | 'CREATE_LAPORAN_KEMATIAN'
   | 'UPDATE_LAPORAN_KEMATIAN'
   | 'VERIFY_LAPORAN_KEMATIAN'
@@ -37,7 +42,13 @@ export type ActionType =
   | 'PAY_PENGELUARAN'
   | 'CREATE_BUKU_KAS'
   | 'UPDATE_BUKU_KAS'
-  | 'CANCEL_BUKU_KAS';
+  | 'CANCEL_BUKU_KAS'
+  | 'CREATE_REPORT'
+  | 'VIEW_REPORT'
+  | 'EXPORT_PDF'
+  | 'EXPORT_EXCEL'
+  | 'PRINT_REPORT'
+  | 'RUN_RECONCILIATION';
 
 // 01_ANGGOTA
 export interface Member {
@@ -278,6 +289,7 @@ export interface User {
   Status: UserStatus;
   Tanggal_Dibuat: string;
   Terakhir_Login?: string;
+  MustChangePassword?: boolean;
 }
 
 // Public User profile safe for browser
@@ -290,6 +302,26 @@ export interface SafeUser {
   Status: UserStatus;
   Tanggal_Dibuat: string;
   Terakhir_Login?: string;
+  MustChangePassword?: boolean;
+}
+
+// Member Self-Service Payloads
+export interface MemberSelfServiceProfilePayload {
+  No_HP?: string;
+  Alamat?: string;
+  Keterangan?: string;
+}
+
+export interface MemberSelfServiceFamilyPayload {
+  ID_Keluarga?: string;
+  NIK?: string;
+  Nama: string;
+  Tempat_Lahir?: string;
+  Tanggal_Lahir?: string;
+  Hubungan: FamilyRelation;
+  No_HP?: string;
+  Calon_Ahli_Waris?: HeirCandidate;
+  Keterangan?: string;
 }
 
 // 09_LOG_AKTIVITAS
@@ -391,4 +423,240 @@ export interface PublicDaftarKKPayload {
     Calon_Ahli_Waris: HeirCandidate;
   }>;
 }
+
+// ==========================================
+// PHASE 4: REPORT & RECONCILIATION TYPES
+// ==========================================
+
+export type ReportPeriodType =
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'last_month'
+  | 'this_year'
+  | 'last_year'
+  | 'custom'
+  | 'all';
+
+export interface ReportFilterOptions {
+  period?: ReportPeriodType;
+  startDate?: string;
+  endDate?: string;
+  rt?: RTEnum | 'all';
+  jenisTransaksi?: 'all' | 'KAS_MASUK' | 'KAS_KELUAR';
+  status?: string;
+  kategori?: string;
+}
+
+export interface FinancialSummaryReportData {
+  periodInfo: {
+    startDate: string;
+    endDate: string;
+    label: string;
+  };
+  filterApplied: {
+    rt: RTEnum | 'all';
+    jenisTransaksi: 'all' | 'KAS_MASUK' | 'KAS_KELUAR';
+  };
+  saldoKasSekarang: number;
+  totalKasMasukPeriode: number;
+  totalKasKeluarPeriode: number;
+  surplusDefisitPeriode: number;
+  totalIuranPeriode: number;
+  totalSantunanPeriode: number;
+  totalPengeluaranPeriode: number;
+  jumlahTransaksi: {
+    total: number;
+    iuran: number;
+    santunan: number;
+    pengeluaran: number;
+  };
+  anggotaMetrics: {
+    totalKK: number;
+    kkAktif: number;
+  };
+  rtBreakdown: Record<string, { masuk: number; keluar: number; kkCount: number }>;
+  categoryBreakdown: Record<string, number>;
+  monthlyTrend: Array<{ monthKey: string; label: string; masuk: number; keluar: number; saldo: number }>;
+  settings: {
+    iuranBulanan: number;
+    nominalSantunan: number;
+    masaTungguHari: number;
+  };
+}
+
+export interface CashbookReportData {
+  periodInfo: {
+    startDate: string;
+    endDate: string;
+    label: string;
+  };
+  filterApplied: ReportFilterOptions;
+  summary: {
+    totalMasuk: number;
+    totalKeluar: number;
+    netCashFlow: number;
+    countValid: number;
+    countDibatalkan: number;
+    totalRecords: number;
+    saldoKasSaatIni: number;
+  };
+  items: Array<CashTransaction & {
+    namaAnggota?: string;
+    noKkAnggota?: string;
+    rtAnggota?: string;
+  }>;
+}
+
+export interface IuranReportData {
+  periodInfo: {
+    startDate: string;
+    endDate: string;
+    label: string;
+  };
+  filterApplied: ReportFilterOptions;
+  summary: {
+    totalKK: number;
+    kkSudahBayar: number;
+    kkBelumBayar: number;
+    totalNominal: number;
+    totalTransaksi: number;
+    persentaseKepatuhan: number;
+    nominalIuranPerKK: number;
+  };
+  rtSummary: Record<string, { totalKK: number; paidKK: number; totalNominal: number; rate: number }>;
+  monthlyBreakdown: Array<{ bulan: number; tahun: number; nominal: number; count: number }>;
+  items: Array<Contribution & {
+    namaKepalaKeluarga: string;
+    noKk: string;
+    rt: RTEnum;
+    statusAnggota: string;
+  }>;
+}
+
+export interface SantunanReportData {
+  periodInfo: {
+    startDate: string;
+    endDate: string;
+    label: string;
+  };
+  filterApplied: ReportFilterOptions;
+  summary: {
+    totalLaporanKematian: number;
+    totalPengajuan: number;
+    totalDisetujui: number;
+    totalDicairkan: number;
+    totalNominalDicairkan: number;
+    standardNominal: number;
+  };
+  rtSummary: Record<string, { count: number; totalNominal: number }>;
+  items: Array<Compensation & {
+    namaAnggota?: string;
+    noKk?: string;
+    rt?: RTEnum;
+    statusLaporan?: string;
+    tanggalKematian?: string;
+    tempatKematian?: string;
+    pelapor?: string;
+  }>;
+}
+
+export interface PengeluaranReportData {
+  periodInfo: {
+    startDate: string;
+    endDate: string;
+    label: string;
+  };
+  filterApplied: ReportFilterOptions;
+  summary: {
+    totalPengajuan: number;
+    totalDiajukan: number;
+    totalDisetujui: number;
+    totalDibayarkan: number;
+    totalDitolak: number;
+    totalNominalDibayar: number;
+  };
+  categoryBreakdown: Record<string, { count: number; nominal: number }>;
+  items: Expense[];
+}
+
+export interface ReconciliationReportData {
+  timestamp: string;
+  reconciliationStatus: 'VALID' | 'PERLU PEMERIKSAAN';
+  ledger: {
+    totalKasMasuk: number;
+    totalKasKeluar: number;
+    saldoBukuKas: number;
+    expectedSaldo: number;
+    selisih: number;
+    totalTransaksiValid: number;
+    totalTransaksiDibatalkan: number;
+  };
+  sourcesBreakdown: {
+    kasMasuk: {
+      iuran: { count: number; total: number };
+      penyesuaian: { count: number; total: number };
+      lainnya: { count: number; total: number };
+      total: number;
+    };
+    kasKeluar: {
+      santunan: { count: number; total: number };
+      pengeluaran: { count: number; total: number };
+      penyesuaian: { count: number; total: number };
+      lainnya: { count: number; total: number };
+      total: number;
+    };
+  };
+  comparisons: {
+    iuran: {
+      moduleName: string;
+      sourceTotalRecords: number;
+      sourceTotalAmount: number;
+      ledgerTotalRecords: number;
+      ledgerTotalAmount: number;
+      difference: number;
+      status: 'MATCH' | 'MISMATCH';
+    };
+    santunan: {
+      moduleName: string;
+      sourceTotalRecords: number;
+      sourceTotalAmount: number;
+      ledgerTotalRecords: number;
+      ledgerTotalAmount: number;
+      difference: number;
+      status: 'MATCH' | 'MISMATCH';
+    };
+    pengeluaran: {
+      moduleName: string;
+      sourceTotalRecords: number;
+      sourceTotalAmount: number;
+      ledgerTotalRecords: number;
+      ledgerTotalAmount: number;
+      difference: number;
+      status: 'MATCH' | 'MISMATCH';
+    };
+  };
+  integrityChecks: {
+    passed: boolean;
+    checksCount: number;
+    passedCount: number;
+    failedCount: number;
+    checks: Array<{
+      checkNumber: number;
+      title: string;
+      status: 'PASS' | 'FAIL';
+      details: string;
+    }>;
+  };
+  anomalies: Array<{
+    id: string;
+    type: 'WARNING' | 'ERROR' | 'INFO';
+    category: string;
+    transactionId?: string;
+    referenceId?: string;
+    description: string;
+    recommendation: string;
+  }>;
+}
+
 

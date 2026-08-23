@@ -208,9 +208,17 @@ export async function cancelCashTransaction(id: string, reason: string, petugas:
   };
 
   transactions[index] = updated;
-  memoryStore.setCashTransactions(transactions);
 
-  // Recalculate running balances across all transactions
+  // Recalculate running balances across all valid transactions
+  let running = 0;
+  for (let i = 0; i < transactions.length; i++) {
+    if (transactions[i].Status === 'VALID') {
+      running += (transactions[i].Kas_Masuk || 0) - (transactions[i].Kas_Keluar || 0);
+      transactions[i].Saldo = running;
+    }
+  }
+
+  memoryStore.setCashTransactions(transactions);
   await syncAllTransactions(transactions);
 
   return updated;

@@ -92,8 +92,9 @@ export async function createExpense(
   },
   userId: string
 ): Promise<Expense> {
-  if (input.Nominal <= 0) {
-    throw new Error('Nominal pengeluaran harus lebih besar dari 0.');
+  const nominal = Number(input.Nominal);
+  if (isNaN(nominal) || nominal <= 0) {
+    throw new Error('Nominal pengeluaran harus berupa angka valid dan lebih besar dari 0.');
   }
 
   const nextId = await generateNextExpenseId();
@@ -104,7 +105,7 @@ export async function createExpense(
     Tanggal_Pengeluaran: input.Tanggal_Pengeluaran || new Date().toISOString().split('T')[0],
     Kategori: input.Kategori,
     Uraian: input.Uraian.trim(),
-    Nominal: Number(input.Nominal),
+    Nominal: nominal,
     Metode_Pembayaran: input.Metode_Pembayaran || 'Tunai',
     Nomor_Bukti: input.Nomor_Bukti ? input.Nomor_Bukti.trim() : undefined,
     Bukti_Pengeluaran: input.Bukti_Pengeluaran ? input.Bukti_Pengeluaran.trim() : undefined,

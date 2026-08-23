@@ -161,5 +161,21 @@ export const memoryStore = {
     if (memoryLogs.length > 500) {
       memoryLogs = memoryLogs.slice(0, 500);
     }
-  }
+  },
+  reset: () => {
+    memoryMembers = getInitialMembers();
+    memoryUsers = getInitialUsers();
+    memorySettings = getInitialSettings();
+    memoryLogs = getInitialLogs();
+    memoryFamilies = getInitialFamilies();
+    memoryContributions = getInitialContributions();
+    memoryDeathReports = getInitialDeathReports();
+    memorySantunan = getInitialSantunan();
+    memoryCashTransactions = getInitialCashTransactions();
+    memoryExpenses = getInitialExpenses();
+  },
 };
+
+export function resetMemoryStore(): void {
+  memoryStore.reset();
+}

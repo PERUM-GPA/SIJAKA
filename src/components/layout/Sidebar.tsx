@@ -119,6 +119,12 @@ export function Sidebar({
       allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS'],
     },
     {
+      id: 'laporan',
+      label: 'Laporan & Rekonsiliasi',
+      icon: FileText,
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS'],
+    },
+    {
       id: 'users',
       label: 'Manajemen Users',
       icon: Shield,

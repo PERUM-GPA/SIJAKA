@@ -152,6 +152,7 @@ export function getInitialUsers(): User[] {
       Status: 'Aktif',
       Tanggal_Dibuat: '2023-01-01',
       Terakhir_Login: '2026-08-21 08:30:00',
+      MustChangePassword: false,
     },
     {
       ID_User: 'USR002',
@@ -163,6 +164,7 @@ export function getInitialUsers(): User[] {
       Status: 'Aktif',
       Tanggal_Dibuat: '2023-01-01',
       Terakhir_Login: '2026-08-20 19:45:00',
+      MustChangePassword: false,
     },
     {
       ID_User: 'USR003',
@@ -174,6 +176,7 @@ export function getInitialUsers(): User[] {
       Status: 'Aktif',
       Tanggal_Dibuat: '2023-01-01',
       Terakhir_Login: '2026-08-19 14:15:00',
+      MustChangePassword: false,
     },
     {
       ID_User: 'USR004',
@@ -185,6 +188,7 @@ export function getInitialUsers(): User[] {
       Status: 'Aktif',
       Tanggal_Dibuat: '2023-04-10',
       Terakhir_Login: '2026-08-18 10:00:00',
+      MustChangePassword: true,
     },
   ];
 }

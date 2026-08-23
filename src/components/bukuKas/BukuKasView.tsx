@@ -182,7 +182,7 @@ export function BukuKasView() {
               </div>
             </div>
             <div className="text-2xl lg:text-3xl font-extrabold text-emerald-400 mt-3 font-mono">
-              Rp {summary.saldoKas.toLocaleString('id-ID')}
+              Rp {(summary.saldoKas || 0).toLocaleString('id-ID')}
             </div>
             <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
               <CheckCircle className="w-3 h-3 text-emerald-400 inline" />
@@ -198,7 +198,7 @@ export function BukuKasView() {
               </div>
             </div>
             <div className="text-2xl font-bold text-blue-300 mt-3 font-mono">
-              Rp {summary.totalPemasukan.toLocaleString('id-ID')}
+              Rp {(summary.totalPemasukan || 0).toLocaleString('id-ID')}
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
               Dari iuran warga & penerimaan sah
@@ -213,7 +213,7 @@ export function BukuKasView() {
               </div>
             </div>
             <div className="text-2xl font-bold text-rose-300 mt-3 font-mono">
-              Rp {summary.totalPengeluaran.toLocaleString('id-ID')}
+              Rp {(summary.totalPengeluaran || 0).toLocaleString('id-ID')}
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
               Santunan duka & biaya operasional
@@ -374,16 +374,16 @@ export function BukuKasView() {
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-blue-400">
                         {t.Jenis_Transaksi === 'KAS_MASUK' && !isCancelled
-                          ? `+ ${t.Nominal.toLocaleString('id-ID')}`
+                          ? `+ ${(t.Nominal || 0).toLocaleString('id-ID')}`
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-rose-400">
                         {t.Jenis_Transaksi === 'KAS_KELUAR' && !isCancelled
-                          ? `- ${t.Nominal.toLocaleString('id-ID')}`
+                          ? `- ${(t.Nominal || 0).toLocaleString('id-ID')}`
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-emerald-400">
-                        Rp {t.Saldo_Akhir.toLocaleString('id-ID')}
+                        Rp {(t.Saldo_Akhir || 0).toLocaleString('id-ID')}
                       </td>
                       <td className="px-4 py-3 font-sans text-xs text-slate-400">
                         <div>{t.Petugas || '-'}</div>
@@ -481,13 +481,13 @@ export function BukuKasView() {
                   <div>
                     <span className="text-slate-400">Nominal:</span>
                     <p className="text-slate-100 font-mono font-bold text-sm">
-                      Rp {selectedTransaction.Nominal.toLocaleString('id-ID')}
+                      Rp {(selectedTransaction.Nominal || 0).toLocaleString('id-ID')}
                     </p>
                   </div>
                   <div>
                     <span className="text-slate-400">Saldo Akhir:</span>
                     <p className="text-emerald-400 font-mono font-bold text-sm">
-                      Rp {selectedTransaction.Saldo_Akhir.toLocaleString('id-ID')}
+                      Rp {(selectedTransaction.Saldo_Akhir || 0).toLocaleString('id-ID')}
                     </p>
                   </div>
                 </div>

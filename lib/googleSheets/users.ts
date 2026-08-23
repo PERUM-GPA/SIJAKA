@@ -13,6 +13,7 @@ export function toSafeUser(user: User): SafeUser {
     Status: user.Status,
     Tanggal_Dibuat: user.Tanggal_Dibuat,
     Terakhir_Login: user.Terakhir_Login,
+    MustChangePassword: user.MustChangePassword ?? (user.Role === 'ANGGOTA'),
   };
 }
 
@@ -25,7 +26,7 @@ export async function getAllUsers(): Promise<User[]> {
   try {
     const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.USERS}!A2:I`,
+      range: `${SHEET_NAMES.USERS}!A2:J`,
     });
 
     const rows = response.data.values;
@@ -33,17 +34,26 @@ export async function getAllUsers(): Promise<User[]> {
       return memoryStore.getUsers();
     }
 
-    const users: User[] = rows.map((row) => ({
-      ID_User: row[0] || '',
-      ID_Anggota: row[1] || undefined,
-      Nama: row[2] || '',
-      Username: row[3] || '',
-      Password: row[4] || '',
-      Role: (row[5] as UserRole) || 'ANGGOTA',
-      Status: (row[6] as UserStatus) || 'Aktif',
-      Tanggal_Dibuat: row[7] || '',
-      Terakhir_Login: row[8] || undefined,
-    })).filter((u) => u.ID_User !== '');
+    const users: User[] = rows.map((row) => {
+      const role = (row[5] as UserRole) || 'ANGGOTA';
+      const mustChangeCol = row[9];
+      const mustChange = mustChangeCol !== undefined && mustChangeCol !== ''
+        ? String(mustChangeCol).toLowerCase() === 'true'
+        : (role === 'ANGGOTA');
+
+      return {
+        ID_User: row[0] || '',
+        ID_Anggota: row[1] || undefined,
+        Nama: row[2] || '',
+        Username: row[3] || '',
+        Password: row[4] || '',
+        Role: role,
+        Status: (row[6] as UserStatus) || 'Aktif',
+        Tanggal_Dibuat: row[7] || '',
+        Terakhir_Login: row[8] || undefined,
+        MustChangePassword: mustChange,
+      };
+    }).filter((u) => u.ID_User !== '');
 
     memoryStore.setUsers(users);
     return users;
@@ -95,6 +105,7 @@ export async function createUser(data: {
   Role: UserRole;
   Status: UserStatus;
   ID_Anggota?: string;
+  MustChangePassword?: boolean;
 }): Promise<SafeUser> {
   const users = await getAllUsers();
 
@@ -120,6 +131,7 @@ export async function createUser(data: {
   const newId = await generateNextUserId();
   const salt = bcrypt.genSaltSync(10);
   const hashedPassword = bcrypt.hashSync(data.Password, salt);
+  const mustChange = data.MustChangePassword !== undefined ? data.MustChangePassword : (data.Role === 'ANGGOTA');
 
   const newUser: User = {
     ID_User: newId,
@@ -130,6 +142,7 @@ export async function createUser(data: {
     Role: data.Role,
     Status: data.Status,
     Tanggal_Dibuat: new Date().toISOString().split('T')[0],
+    MustChangePassword: mustChange,
   };
 
   const client = getSheetsClient();
@@ -145,11 +158,12 @@ export async function createUser(data: {
         newUser.Status,
         newUser.Tanggal_Dibuat,
         newUser.Terakhir_Login || '',
+        mustChange ? 'true' : 'false',
       ];
 
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: `${SHEET_NAMES.USERS}!A:I`,
+        range: `${SHEET_NAMES.USERS}!A:J`,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [rowData],
@@ -191,6 +205,112 @@ export async function updateLastLogin(id: string): Promise<void> {
       console.error('Error updating last login in Google Sheets:', err);
     }
   }
+}
+
+export async function changeUserPassword(
+  userId: string,
+  oldPlainPassword: string,
+  newPlainPassword: string
+): Promise<{ success: boolean; message: string }> {
+  const users = await getAllUsers();
+  const index = users.findIndex((u) => u.ID_User === userId);
+  if (index === -1) {
+    throw new Error('User tidak ditemukan.');
+  }
+
+  const user = users[index];
+
+  // Verify old password
+  if (!user.Password || !bcrypt.compareSync(oldPlainPassword, user.Password)) {
+    throw new Error('Password lama tidak sesuai.');
+  }
+
+  if (newPlainPassword.length < 6) {
+    throw new Error('Password baru minimal harus 6 karakter.');
+  }
+
+  if (oldPlainPassword === newPlainPassword) {
+    throw new Error('Password baru tidak boleh sama dengan password lama.');
+  }
+
+  const salt = bcrypt.genSaltSync(10);
+  const newHashed = bcrypt.hashSync(newPlainPassword, salt);
+
+  user.Password = newHashed;
+  user.MustChangePassword = false;
+  users[index] = user;
+  memoryStore.setUsers([...users]);
+
+  const client = getSheetsClient();
+  if (client) {
+    try {
+      const rowIndex = index + 2;
+      // Update Password (col E) and MustChangePassword (col J)
+      await Promise.all([
+        client.sheets.spreadsheets.values.update({
+          spreadsheetId: client.spreadsheetId,
+          range: `${SHEET_NAMES.USERS}!E${rowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [[newHashed]],
+          },
+        }),
+        client.sheets.spreadsheets.values.update({
+          spreadsheetId: client.spreadsheetId,
+          range: `${SHEET_NAMES.USERS}!J${rowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [['false']],
+          },
+        }),
+      ]);
+    } catch (err) {
+      console.error('Error updating password in Google Sheets:', err);
+    }
+  }
+
+  return { success: true, message: 'Password berhasil diperbarui.' };
+}
+
+export async function getUserByUsernameOrNoKK(identifier: string): Promise<User | null> {
+  const trimmed = identifier.trim();
+  if (!trimmed) return null;
+
+  // 1. Direct username check
+  const directUser = await getUserByUsername(trimmed);
+  if (directUser) return directUser;
+
+  // 2. Lookup by No_KK or ID_Anggota from 01_ANGGOTA
+  const { getAllMembers } = await import('./anggota.ts');
+  const allMembers = await getAllMembers();
+  const matchedMember = allMembers.find(
+    (m) => m.No_KK === trimmed || m.ID_Anggota.toLowerCase() === trimmed.toLowerCase()
+  );
+
+  if (matchedMember) {
+    const allUsers = await getAllUsers();
+    const existingUser = allUsers.find((u) => u.ID_Anggota === matchedMember.ID_Anggota);
+    if (existingUser) {
+      return existingUser;
+    }
+
+    // Auto-create user account for registered member
+    const defaultPass = matchedMember.Tanggal_Lahir || 'anggota123';
+    const safe = await createUser({
+      Nama: matchedMember.Nama,
+      Username: matchedMember.No_KK,
+      Password: defaultPass,
+      Role: 'ANGGOTA',
+      Status: matchedMember.Status === 'Aktif' ? 'Aktif' : 'Tidak Aktif',
+      ID_Anggota: matchedMember.ID_Anggota,
+      MustChangePassword: true,
+    });
+
+    const newlyCreated = await getUserById(safe.ID_User);
+    return newlyCreated;
+  }
+
+  return null;
 }
 
 export async function verifyUserPassword(user: User, plainPassword: string): Promise<boolean> {

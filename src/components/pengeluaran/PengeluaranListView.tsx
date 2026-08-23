@@ -380,7 +380,7 @@ export function PengeluaranListView() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-rose-400">
-                      Rp {item.Nominal.toLocaleString('id-ID')}
+                      Rp {(item.Nominal || 0).toLocaleString('id-ID')}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-300">
                       <div>{item.Diajukan_Oleh}</div>
@@ -620,7 +620,7 @@ export function PengeluaranListView() {
                 <div className="text-right">
                   <div className="text-slate-400">Nominal:</div>
                   <div className="text-base font-bold text-rose-400 font-mono">
-                    Rp {selectedExpense.Nominal.toLocaleString('id-ID')}
+                    Rp {(selectedExpense.Nominal || 0).toLocaleString('id-ID')}
                   </div>
                 </div>
               </div>
@@ -785,7 +785,7 @@ export function PengeluaranListView() {
 
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs space-y-1">
               <div className="text-emerald-300 font-semibold">
-                Nominal: Rp {payModal.Nominal.toLocaleString('id-ID')}
+                Nominal: Rp {(payModal.Nominal || 0).toLocaleString('id-ID')}
               </div>
               <div className="text-slate-300">
                 Keperluan: <span className="font-semibold">[{payModal.Kategori}] {payModal.Uraian}</span>

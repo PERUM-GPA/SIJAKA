@@ -89,7 +89,7 @@ export function LoginView({ onLoginSuccess, onBackToPublic }: LoginViewProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="login-username" className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Username
+                Username / No. KK
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
@@ -100,11 +100,14 @@ export function LoginView({ onLoginSuccess, onBackToPublic }: LoginViewProps) {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Masukkan username"
+                  placeholder="Username atau No. KK (16 digit)"
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                   autoComplete="username"
                 />
               </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Anggota/Warga dapat login menggunakan No. KK (16 digit) terdaftar
+              </p>
             </div>
 
             <div>

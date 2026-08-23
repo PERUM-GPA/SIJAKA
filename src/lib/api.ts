@@ -76,12 +76,77 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    changePassword: (body: { oldPassword: string; newPassword: string; confirmPassword: string }) =>
+      request<{ success: boolean; message: string }>('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     logout: () =>
       request<{ success: boolean; message: string }>('/api/auth/logout', {
         method: 'POST',
       }),
     me: () =>
       request<{ success: boolean; user: SafeUser }>('/api/auth/me'),
+  },
+
+  member: {
+    getMyProfile: () =>
+      request<{
+        success: boolean;
+        data: {
+          member: Member;
+          families: Family[];
+          contributions: Contribution[];
+          arrears: MemberArrearsInfo;
+          policy: {
+            namaLembaga: string;
+            wilayah: string;
+            iuranBulanan: number;
+            nominalSantunan: number;
+            masaTungguHari: number;
+          };
+        };
+      }>('/api/member/my-profile'),
+    updateProfile: (body: { No_HP?: string; Alamat?: string; Keterangan?: string }) =>
+      request<{ success: boolean; message: string; data: Member }>('/api/member/self-service/profile', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    addFamily: (body: {
+      NIK?: string;
+      Nama: string;
+      Tempat_Lahir?: string;
+      Tanggal_Lahir?: string;
+      Hubungan: import('../types/index.ts').FamilyRelation;
+      No_HP?: string;
+      Calon_Ahli_Waris?: import('../types/index.ts').HeirCandidate;
+      Keterangan?: string;
+    }) =>
+      request<{ success: boolean; message: string; data: Family }>('/api/member/self-service/keluarga', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    updateFamily: (
+      id: string,
+      body: Partial<{
+        NIK: string;
+        Nama: string;
+        Tempat_Lahir: string;
+        Tanggal_Lahir: string;
+        Hubungan: import('../types/index.ts').FamilyRelation;
+        No_HP: string;
+        Calon_Ahli_Waris: import('../types/index.ts').HeirCandidate;
+        Keterangan: string;
+      }>
+    ) =>
+      request<{ success: boolean; message: string; data: Family }>(`/api/member/self-service/keluarga/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    deleteFamily: (id: string) =>
+      request<{ success: boolean; message: string }>(`/api/member/self-service/keluarga/${id}`, {
+        method: 'DELETE',
+      }),
   },
 
   dashboard: {
@@ -512,6 +577,70 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ value }),
       }),
+  },
+
+  reports: {
+    getSummary: (filter: import('../types/index.ts').ReportFilterOptions = {}) => {
+      const query = new URLSearchParams();
+      if (filter.period) query.set('period', filter.period);
+      if (filter.startDate) query.set('startDate', filter.startDate);
+      if (filter.endDate) query.set('endDate', filter.endDate);
+      if (filter.rt) query.set('rt', filter.rt);
+      if (filter.jenisTransaksi) query.set('jenisTransaksi', filter.jenisTransaksi);
+      return request<{ success: boolean; data: import('../types/index.ts').FinancialSummaryReportData }>(
+        `/api/reports/summary?${query.toString()}`
+      );
+    },
+    getCashbook: (filter: import('../types/index.ts').ReportFilterOptions = {}) => {
+      const query = new URLSearchParams();
+      if (filter.period) query.set('period', filter.period);
+      if (filter.startDate) query.set('startDate', filter.startDate);
+      if (filter.endDate) query.set('endDate', filter.endDate);
+      if (filter.rt) query.set('rt', filter.rt);
+      if (filter.jenisTransaksi) query.set('jenisTransaksi', filter.jenisTransaksi);
+      if (filter.status) query.set('status', filter.status);
+      return request<{ success: boolean; data: import('../types/index.ts').CashbookReportData }>(
+        `/api/reports/cashbook?${query.toString()}`
+      );
+    },
+    getIuran: (filter: import('../types/index.ts').ReportFilterOptions = {}) => {
+      const query = new URLSearchParams();
+      if (filter.period) query.set('period', filter.period);
+      if (filter.startDate) query.set('startDate', filter.startDate);
+      if (filter.endDate) query.set('endDate', filter.endDate);
+      if (filter.rt) query.set('rt', filter.rt);
+      if (filter.status) query.set('status', filter.status);
+      return request<{ success: boolean; data: import('../types/index.ts').IuranReportData }>(
+        `/api/reports/iuran?${query.toString()}`
+      );
+    },
+    getSantunan: (filter: import('../types/index.ts').ReportFilterOptions = {}) => {
+      const query = new URLSearchParams();
+      if (filter.period) query.set('period', filter.period);
+      if (filter.startDate) query.set('startDate', filter.startDate);
+      if (filter.endDate) query.set('endDate', filter.endDate);
+      if (filter.rt) query.set('rt', filter.rt);
+      if (filter.status) query.set('status', filter.status);
+      return request<{ success: boolean; data: import('../types/index.ts').SantunanReportData }>(
+        `/api/reports/santunan?${query.toString()}`
+      );
+    },
+    getPengeluaran: (filter: import('../types/index.ts').ReportFilterOptions = {}) => {
+      const query = new URLSearchParams();
+      if (filter.period) query.set('period', filter.period);
+      if (filter.startDate) query.set('startDate', filter.startDate);
+      if (filter.endDate) query.set('endDate', filter.endDate);
+      if (filter.kategori) query.set('kategori', filter.kategori);
+      if (filter.status) query.set('status', filter.status);
+      return request<{ success: boolean; data: import('../types/index.ts').PengeluaranReportData }>(
+        `/api/reports/pengeluaran?${query.toString()}`
+      );
+    },
+    getReconciliation: () => {
+      return request<{ success: boolean; data: import('../types/index.ts').ReconciliationReportData }>(
+        '/api/reports/reconciliation'
+      );
+    },
   },
 
   public: {

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Menu, LogOut, ShieldCheck, Database, RefreshCw } from 'lucide-react';
+import { Menu, LogOut, ShieldCheck, Database, RefreshCw, KeyRound } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { RoleBadge } from '../common/Badge.tsx';
 import { ConfirmModal } from '../common/ConfirmModal.tsx';
+import { ChangePasswordModal } from '../member/ChangePasswordModal.tsx';
 
 interface TopbarProps {
   onToggleMobileMenu: () => void;
@@ -12,6 +13,7 @@ interface TopbarProps {
 export function Topbar({ onToggleMobileMenu, sheetsConfigured = false }: TopbarProps) {
   const { user, logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
@@ -53,7 +55,7 @@ export function Topbar({ onToggleMobileMenu, sheetsConfigured = false }: TopbarP
         </div>
 
         {/* Right Side: Status Badge + User Info + Logout */}
-        <div className="flex items-center space-x-3 sm:space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-3">
           {/* Database Status Indicator */}
           <div
             id="db-status-badge"
@@ -92,6 +94,19 @@ export function Topbar({ onToggleMobileMenu, sheetsConfigured = false }: TopbarP
             </div>
           )}
 
+          {/* Quick Change Password Button */}
+          {user && (
+            <button
+              id="btn-topbar-change-password"
+              type="button"
+              onClick={() => setShowChangePasswordModal(true)}
+              className="p-2 rounded-xl text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+              title="Ubah Kata Sandi"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Logout Button */}
           <button
             id="btn-topbar-logout"
@@ -104,6 +119,12 @@ export function Topbar({ onToggleMobileMenu, sheetsConfigured = false }: TopbarP
           </button>
         </div>
       </header>
+
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+        isForced={false}
+      />
 
       <ConfirmModal
         isOpen={showLogoutConfirm}

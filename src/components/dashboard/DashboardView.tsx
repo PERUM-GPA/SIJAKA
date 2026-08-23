@@ -16,6 +16,7 @@ import {
   Receipt,
   HeartHandshake,
   Wallet,
+  FileText,
   ArrowDownRight,
   ArrowUpRight,
 } from 'lucide-react';
@@ -24,6 +25,7 @@ import { api } from '../../lib/api.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { ActiveTab } from '../layout/Sidebar.tsx';
 import { formatDateTimeIndo, formatRupiah } from '../../lib/formatters.ts';
+import { MemberDashboardView } from '../member/MemberDashboardView.tsx';
 
 interface DashboardViewProps {
   onNavigate: (tab: ActiveTab) => void;
@@ -31,6 +33,12 @@ interface DashboardViewProps {
 
 export function DashboardView({ onNavigate }: DashboardViewProps) {
   const { user } = useAuth();
+
+  // If the logged-in user is ANGGOTA (Warga), display the dedicated Member Self-Service Dashboard
+  if (user?.Role === 'ANGGOTA') {
+    return <MemberDashboardView />;
+  }
+
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [recentLogs, setRecentLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,12 +90,48 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
               <span>Jamaah Tahlil Ar Rohman</span>
             </div>
             
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              SIJAKA
-            </h1>
-            <p className="text-sm sm:text-base font-medium text-slate-300">
-              Sistem Informasi Jaminan Kematian
-            </p>
+            {/* Role-Based Greeting for Staff Roles */}
+            {user?.Role === 'PENGURUS' && (
+              <div className="space-y-1">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                  Assalamu'alaikum, Selamat Datang Pengurus SIJAKA
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-300">
+                  Semoga SIJAKA membantu menjalankan pelayanan jamaah dengan tertib, amanah, dan penuh kepedulian.
+                </p>
+              </div>
+            )}
+            {user?.Role === 'BENDAHARA' && (
+              <div className="space-y-1">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                  Assalamu'alaikum, Selamat Datang Bendahara SIJAKA
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-300">
+                  Kelola pencatatan iuran, kas, dan transaksi keuangan dengan tertib, transparan, dan amanah.
+                </p>
+              </div>
+            )}
+            {user?.Role === 'ADMIN' && (
+              <div className="space-y-1">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                  Assalamu'alaikum, Selamat Datang Admin SIJAKA
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-300">
+                  Kelola sistem, data, pengguna, dan operasional SIJAKA dengan aman, tertib, dan bertanggung jawab.
+                </p>
+              </div>
+            )}
+            {!['PENGURUS', 'BENDAHARA', 'ADMIN'].includes(user?.Role || '') && (
+              <div className="space-y-1">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                  SIJAKA
+                </h1>
+                <p className="text-sm sm:text-base font-medium text-slate-300">
+                  Sistem Informasi Jaminan Kematian
+                </p>
+              </div>
+            )}
+
             <p className="text-xs sm:text-sm text-slate-400">
               Cakupan Wilayah: <span className="text-emerald-400 font-semibold">RT 06 • RT 07 • RT 10</span> Perum GPA Ngijo
             </p>
@@ -256,17 +300,22 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           {canViewPolicy && (
             <div
               id="policy-info-bar"
-              className="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2"
+              className="mt-6 pt-5 border-t border-slate-100 flex flex-col space-y-2.5 text-xs text-slate-500"
             >
-              <span>
-                Standar Iuran: <strong>{formatRupiah(metrics?.iuranBulanan ?? 5000)} / Bulan</strong>
-              </span>
-              <span>
-                Besaran Santunan: <strong>{formatRupiah(metrics?.nominalSantunan ?? 600000)}</strong>
-              </span>
-              <span>
-                Masa Tunggu: <strong>{metrics?.masaTungguHari ?? 0} Hari (Langsung Aktif)</strong>
-              </span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  Standar Iuran: <strong>{formatRupiah(metrics?.iuranBulanan ?? 5000)} / Bulan</strong>
+                </span>
+                <span>
+                  Patokan Santunan Duka: <strong className="text-slate-800 font-bold">{formatRupiah(metrics?.nominalSantunan ?? 600000)}</strong>
+                </span>
+                <span>
+                  Masa Tunggu: <strong>{metrics?.masaTungguHari ?? 0} Hari (Langsung Aktif)</strong>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 italic leading-relaxed">
+                * Nilai ini merupakan patokan/acuan internal, bukan nominal santunan yang pasti. Nilai santunan dapat lebih besar atau lebih kecil sesuai keputusan/kebijakan yang berlaku.
+              </p>
             </div>
           )}
         </div>
@@ -321,6 +370,19 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
                   <div className="flex items-center space-x-2.5">
                     <Receipt className="w-4 h-4 text-amber-600" />
                     <span>Pengeluaran Operasional</span>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              )}
+
+              {['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user?.Role || '') && (
+                <button
+                  onClick={() => onNavigate('laporan')}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <FileText className="w-4 h-4 text-teal-600" />
+                    <span>Laporan & Rekonsiliasi</span>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                 </button>
