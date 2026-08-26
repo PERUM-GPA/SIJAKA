@@ -52,7 +52,7 @@ export async function getAllSantunan(): Promise<Compensation[]> {
 
     const rows = res.data.values || [];
     if (rows.length === 0) {
-      return [...memoryStore.getSantunan()];
+      return [];
     }
 
     const items: Compensation[] = rows.map((row) => ({

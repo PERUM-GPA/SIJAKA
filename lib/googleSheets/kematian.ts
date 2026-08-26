@@ -45,7 +45,7 @@ export async function getAllDeathReports(): Promise<DeathReport[]> {
 
     const rows = res.data.values || [];
     if (rows.length === 0) {
-      return [...memoryStore.getDeathReports()];
+      return [];
     }
 
     const reports: DeathReport[] = rows.map((row) => ({

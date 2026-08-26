@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { AuthRequest, generateToken, requireAuth, requireRole } from './server/auth.ts';
+import { AuthRequest, generateToken, requireAuth, requireRole, resolveMemberIdForUser } from './server/auth.ts';
 import {
   getAllMembers,
   getMemberById,
@@ -382,6 +382,9 @@ export function createApp() {
 
       // Safe user without password
       const safeUser = toSafeUser(user);
+      if (!safeUser.ID_Anggota) {
+        safeUser.ID_Anggota = await resolveMemberIdForUser(safeUser);
+      }
       const token = generateToken(safeUser);
 
       // Set cookie for browser
@@ -487,7 +490,10 @@ export function createApp() {
   });
 
   // Current User Session
-  app.get('/api/auth/me', requireAuth, (req: AuthRequest, res: Response) => {
+  app.get('/api/auth/me', requireAuth, async (req: AuthRequest, res: Response) => {
+    if (req.user && !req.user.ID_Anggota) {
+      req.user.ID_Anggota = await resolveMemberIdForUser(req.user);
+    }
     res.json({
       success: true,
       user: req.user,
@@ -503,6 +509,9 @@ export function createApp() {
   app.get('/api/member/my-profile', requireAuth, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
+      if (!user.ID_Anggota) {
+        user.ID_Anggota = await resolveMemberIdForUser(user);
+      }
       if (!user.ID_Anggota) {
         res.status(404).json({ success: false, message: 'Akun Anda belum ditautkan dengan data anggota KK.' });
         return;
