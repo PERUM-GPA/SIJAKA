@@ -87,9 +87,35 @@ import * as XLSX from 'xlsx';
 import { isGoogleSheetsConfigured } from './lib/googleSheets/client.ts';
 import { Member, DashboardMetrics } from './src/types/index.ts';
 
-async function startServer() {
+export function createApp() {
   const app = express();
-  const PORT = 3000;
+
+  // Normalize /api prefix if stripped by serverless rewrites
+  app.use((req: Request, _res: Response, next: any) => {
+    if (
+      !req.url.startsWith('/api') &&
+      (req.url.startsWith('/public') ||
+        req.url.startsWith('/auth') ||
+        req.url.startsWith('/members') ||
+        req.url.startsWith('/families') ||
+        req.url.startsWith('/contributions') ||
+        req.url.startsWith('/arrears') ||
+        req.url.startsWith('/death-reports') ||
+        req.url.startsWith('/compensations') ||
+        req.url.startsWith('/cash-transactions') ||
+        req.url.startsWith('/expenses') ||
+        req.url.startsWith('/users') ||
+        req.url.startsWith('/settings') ||
+        req.url.startsWith('/audit-logs') ||
+        req.url.startsWith('/member/self-service') ||
+        req.url.startsWith('/reports') ||
+        req.url.startsWith('/health') ||
+        req.url.startsWith('/status'))
+    ) {
+      req.url = '/api' + req.url;
+    }
+    next();
+  });
 
   app.use(express.json({ limit: '10mb' }));
   app.use((err: any, _req: Request, res: Response, next: any) => {
@@ -2994,6 +3020,14 @@ async function startServer() {
     });
   });
 
+  return app;
+}
+
+export const app = createApp();
+
+async function startServer() {
+  const PORT = 3000;
+
   // ------------------------------------------
   // VITE MIDDLEWARE & STATIC SERVING
   // ------------------------------------------
@@ -3016,4 +3050,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
