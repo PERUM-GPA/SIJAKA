@@ -86,7 +86,7 @@ export const HEADERS = {
     'Disetujui_Oleh', 'Tanggal_Persetujuan', 'Status', 'Keterangan', 'Tanggal_Dibuat', 'Tanggal_Diperbarui'
   ],
   [SHEET_NAMES.USERS]: [
-    'ID_User', 'ID_Anggota', 'Nama', 'Username', 'Password', 'Role', 'Status', 'Tanggal_Dibuat', 'Terakhir_Login'
+    'ID_User', 'Nama', 'Username', 'Password', 'Role', 'Status', 'Tanggal_Dibuat', 'Terakhir_Login'
   ],
   [SHEET_NAMES.LOG_AKTIVITAS]: [
     'ID_Log', 'Timestamp', 'ID_User', 'Nama_User', 'Aksi', 'Modul', 'Record_ID', 'Deskripsi', 'Status'
