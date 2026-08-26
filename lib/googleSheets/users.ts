@@ -26,7 +26,7 @@ export async function getAllUsers(): Promise<User[]> {
   try {
     const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.USERS}!A2:J`,
+      range: `${SHEET_NAMES.USERS}!A2:H`,
     });
 
     const rows = response.data.values;
@@ -35,30 +35,28 @@ export async function getAllUsers(): Promise<User[]> {
     }
 
     const users: User[] = rows.map((row) => {
-      const role = (row[5] as UserRole) || 'ANGGOTA';
-      const mustChangeCol = row[9];
-      const mustChange = mustChangeCol !== undefined && mustChangeCol !== ''
-        ? String(mustChangeCol).toLowerCase() === 'true'
-        : (role === 'ANGGOTA');
+      const role = (row[4] as UserRole) || 'ANGGOTA';
 
       return {
         ID_User: row[0] || '',
-        ID_Anggota: row[1] || undefined,
-        Nama: row[2] || '',
-        Username: row[3] || '',
-        Password: row[4] || '',
+        Nama: row[1] || '',
+        Username: row[2] || '',
+        Password: row[3] || '',
         Role: role,
-        Status: (row[6] as UserStatus) || 'Aktif',
-        Tanggal_Dibuat: row[7] || '',
-        Terakhir_Login: row[8] || undefined,
-        MustChangePassword: mustChange,
+        Status: (row[5] as UserStatus) || 'Aktif',
+        Tanggal_Dibuat: row[6] || '',
+        Terakhir_Login: row[7] || undefined,
+        MustChangePassword: role === 'ANGGOTA',
       };
     }).filter((u) => u.ID_User !== '');
 
     memoryStore.setUsers(users);
     return users;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching users from Google Sheets, using memory fallback:', error);
+    if (isGoogleSheetsConfigured()) {
+      throw new Error(`Gagal membaca data dari Google Sheets (08_USERS): ${error?.message || error}`);
+    }
     return memoryStore.getUsers();
   }
 }
@@ -154,7 +152,6 @@ export async function createUser(data: {
     try {
       const rowData = [
         newUser.ID_User,
-        newUser.ID_Anggota || '',
         newUser.Nama,
         newUser.Username,
         newUser.Password,
@@ -162,12 +159,11 @@ export async function createUser(data: {
         newUser.Status,
         newUser.Tanggal_Dibuat,
         newUser.Terakhir_Login || '',
-        mustChange ? 'true' : 'false',
       ];
 
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: `${SHEET_NAMES.USERS}!A:J`,
+        range: `${SHEET_NAMES.USERS}!A:H`,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [rowData],
@@ -200,7 +196,7 @@ export async function updateLastLogin(id: string): Promise<void> {
       const rowIndex = index + 2;
       await client.sheets.spreadsheets.values.update({
         spreadsheetId: client.spreadsheetId,
-        range: `${SHEET_NAMES.USERS}!I${rowIndex}`,
+        range: `${SHEET_NAMES.USERS}!H${rowIndex}`,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [[now]],
@@ -250,25 +246,15 @@ export async function changeUserPassword(
   if (client) {
     try {
       const rowIndex = index + 2;
-      // Update Password (col E) and MustChangePassword (col J)
-      await Promise.all([
-        client.sheets.spreadsheets.values.update({
-          spreadsheetId: client.spreadsheetId,
-          range: `${SHEET_NAMES.USERS}!E${rowIndex}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: {
-            values: [[newHashed]],
-          },
-        }),
-        client.sheets.spreadsheets.values.update({
-          spreadsheetId: client.spreadsheetId,
-          range: `${SHEET_NAMES.USERS}!J${rowIndex}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: {
-            values: [['false']],
-          },
-        }),
-      ]);
+      // Update Password at Column D (08_USERS: A=ID_User, B=Nama, C=Username, D=Password)
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.USERS}!D${rowIndex}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [[newHashed]],
+        },
+      });
     } catch (err) {
       console.error('Error updating password in Google Sheets:', err);
     }
@@ -283,7 +269,21 @@ export async function getUserByUsernameOrNoKK(identifier: string): Promise<User 
 
   // 1. Direct username check
   const directUser = await getUserByUsername(trimmed);
-  if (directUser) return directUser;
+  if (directUser) {
+    if (directUser.Role === 'ANGGOTA' && !directUser.ID_Anggota) {
+      const { getAllMembers } = await import('./anggota.ts');
+      const allMembers = await getAllMembers();
+      const matched = allMembers.find(
+        (m) =>
+          m.No_KK === directUser.Username ||
+          m.ID_Anggota.toLowerCase() === directUser.Username.toLowerCase()
+      );
+      if (matched) {
+        directUser.ID_Anggota = matched.ID_Anggota;
+      }
+    }
+    return directUser;
+  }
 
   // 2. Lookup by No_KK or ID_Anggota from 01_ANGGOTA
   const { getAllMembers } = await import('./anggota.ts');
@@ -294,8 +294,14 @@ export async function getUserByUsernameOrNoKK(identifier: string): Promise<User 
 
   if (matchedMember) {
     const allUsers = await getAllUsers();
-    const existingUser = allUsers.find((u) => u.ID_Anggota === matchedMember.ID_Anggota);
+    const existingUser = allUsers.find(
+      (u) =>
+        u.Username.toLowerCase() === matchedMember.No_KK.toLowerCase() ||
+        u.Username.toLowerCase() === matchedMember.ID_Anggota.toLowerCase() ||
+        (u.ID_Anggota && u.ID_Anggota === matchedMember.ID_Anggota)
+    );
     if (existingUser) {
+      existingUser.ID_Anggota = matchedMember.ID_Anggota;
       return existingUser;
     }
 
@@ -312,6 +318,9 @@ export async function getUserByUsernameOrNoKK(identifier: string): Promise<User 
     });
 
     const newlyCreated = await getUserById(safe.ID_User);
+    if (newlyCreated) {
+      newlyCreated.ID_Anggota = matchedMember.ID_Anggota;
+    }
     return newlyCreated;
   }
 
