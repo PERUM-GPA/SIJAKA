@@ -1,5 +1,5 @@
 import { Family, FamilyRelation, FamilyStatus, HeirCandidate } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore } from './client.ts';
 import { getMemberById } from './anggota.ts';
 
 export async function getAllFamilies(): Promise<Family[]> {
@@ -16,7 +16,7 @@ export async function getAllFamilies(): Promise<Family[]> {
 
     const rows = response.data.values;
     if (!rows || rows.length === 0) {
-      return memoryStore.getFamilies();
+      return [];
     }
 
     const families: Family[] = rows.map((row) => ({
@@ -35,8 +35,11 @@ export async function getAllFamilies(): Promise<Family[]> {
 
     memoryStore.setFamilies(families);
     return families;
-  } catch (error) {
-    console.error('Error fetching families from Google Sheets, using memory fallback:', error);
+  } catch (error: any) {
+    console.error('Error fetching families from Google Sheets:', error);
+    if (isGoogleSheetsConfigured()) {
+      throw new Error(`Gagal membaca data dari Google Sheets (02_KELUARGA): ${error?.message || error}`);
+    }
     return memoryStore.getFamilies();
   }
 }
@@ -109,6 +112,10 @@ export async function createFamily(data: {
   };
 
   const client = getSheetsClient();
+  if (isGoogleSheetsConfigured() && !client) {
+    throw new Error('Gagal menghubungkan ke Google Sheets API. Periksa kredensial Service Account.');
+  }
+
   if (client) {
     try {
       const rowData = [
@@ -133,8 +140,9 @@ export async function createFamily(data: {
           values: [rowData],
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error appending family to Google Sheets:', error);
+      throw new Error(`Gagal menyimpan data Keluarga ke Google Sheets (02_KELUARGA): ${error?.message || error}`);
     }
   }
 
@@ -157,18 +165,18 @@ export async function updateFamily(
   }
 
   const current = families[index];
-
   const updatedFamily: Family = {
     ...current,
     ...updates,
-    ID_Keluarga: current.ID_Keluarga, // immutable
-    ID_Anggota: current.ID_Anggota,   // immutable
+    ID_Keluarga: id,
+    ID_Anggota: current.ID_Anggota,
   };
 
-  families[index] = updatedFamily;
-  memoryStore.setFamilies([...families]);
-
   const client = getSheetsClient();
+  if (isGoogleSheetsConfigured() && !client) {
+    throw new Error('Gagal menghubungkan ke Google Sheets API. Periksa kredensial Service Account.');
+  }
+
   if (client) {
     try {
       const rowIndex = index + 2;
@@ -194,10 +202,14 @@ export async function updateFamily(
           values: [rowData],
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating family in Google Sheets:', error);
+      throw new Error(`Gagal memperbarui data Keluarga di Google Sheets (02_KELUARGA): ${error?.message || error}`);
     }
   }
+
+  families[index] = updatedFamily;
+  memoryStore.setFamilies([...families]);
 
   return updatedFamily;
 }

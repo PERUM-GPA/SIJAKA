@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { User, SafeUser, UserRole, UserStatus } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore } from './client.ts';
 import { getMemberById } from './anggota.ts';
 
 export function toSafeUser(user: User): SafeUser {
@@ -146,6 +146,10 @@ export async function createUser(data: {
   };
 
   const client = getSheetsClient();
+  if (isGoogleSheetsConfigured() && !client) {
+    throw new Error('Gagal menghubungkan ke Google Sheets API. Periksa kredensial Service Account.');
+  }
+
   if (client) {
     try {
       const rowData = [
@@ -169,8 +173,9 @@ export async function createUser(data: {
           values: [rowData],
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error appending user to Google Sheets:', error);
+      throw new Error(`Gagal menyimpan data Akun ke Google Sheets (08_USERS): ${error?.message || error}`);
     }
   }
 

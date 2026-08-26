@@ -100,7 +100,7 @@ export function isGoogleSheetsConfigured(): boolean {
   const sheetId = process.env.GOOGLE_SHEETS_ID;
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
-  return Boolean(sheetId && clientEmail && privateKey);
+  return Boolean(sheetId && sheetId.trim() && clientEmail && clientEmail.trim() && privateKey && privateKey.trim());
 }
 
 export function getSheetsClient(): { sheets: sheets_v4.Sheets; spreadsheetId: string } | null {
@@ -109,12 +109,19 @@ export function getSheetsClient(): { sheets: sheets_v4.Sheets; spreadsheetId: st
   }
 
   try {
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    // Format private key properly if newlines are escaped
-    let privateKey = process.env.GOOGLE_PRIVATE_KEY || '';
-    if (privateKey.includes('\\n')) {
-      privateKey = privateKey.replace(/\\n/g, '\n');
+    const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
+    let privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').trim();
+
+    // Remove quotes if present
+    if (
+      (privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+      (privateKey.startsWith("'") && privateKey.endsWith("'"))
+    ) {
+      privateKey = privateKey.slice(1, -1).trim();
     }
+
+    // Replace escaped newlines with actual newline characters
+    privateKey = privateKey.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
 
     const auth = new google.auth.JWT({
       email,
@@ -125,7 +132,7 @@ export function getSheetsClient(): { sheets: sheets_v4.Sheets; spreadsheetId: st
     const sheets = google.sheets({ version: 'v4', auth });
     return {
       sheets,
-      spreadsheetId: process.env.GOOGLE_SHEETS_ID!,
+      spreadsheetId: (process.env.GOOGLE_SHEETS_ID || '').trim(),
     };
   } catch (err) {
     console.error('Error initializing Google Sheets client:', err);

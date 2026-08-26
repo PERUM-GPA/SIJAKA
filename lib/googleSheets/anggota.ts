@@ -1,5 +1,5 @@
 import { Member, RTEnum, MemberStatus } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
+import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
 
 export async function getAllMembers(): Promise<Member[]> {
   const client = getSheetsClient();
@@ -15,7 +15,7 @@ export async function getAllMembers(): Promise<Member[]> {
 
     const rows = response.data.values;
     if (!rows || rows.length === 0) {
-      return memoryStore.getMembers();
+      return [];
     }
 
     const members: Member[] = rows.map((row) => ({
@@ -37,8 +37,11 @@ export async function getAllMembers(): Promise<Member[]> {
     // Keep memory in sync
     memoryStore.setMembers(members);
     return members;
-  } catch (error) {
-    console.error('Error fetching members from Google Sheets, using memory fallback:', error);
+  } catch (error: any) {
+    console.error('Error fetching members from Google Sheets:', error);
+    if (isGoogleSheetsConfigured()) {
+      throw new Error(`Gagal membaca data dari Google Sheets (01_ANGGOTA): ${error?.message || error}`);
+    }
     return memoryStore.getMembers();
   }
 }
@@ -107,6 +110,10 @@ export async function createMember(data: Omit<Member, 'ID_Anggota'> & { ID_Anggo
   };
 
   const client = getSheetsClient();
+  if (isGoogleSheetsConfigured() && !client) {
+    throw new Error('Gagal menghubungkan ke Google Sheets API. Periksa kredensial Service Account.');
+  }
+
   if (client) {
     try {
       const rowData = [
@@ -133,9 +140,9 @@ export async function createMember(data: Omit<Member, 'ID_Anggota'> & { ID_Anggo
           values: [rowData],
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error appending member to Google Sheets:', error);
-      // We will still save to memory store so user actions aren't lost
+      throw new Error(`Gagal menyimpan data Anggota ke Google Sheets (01_ANGGOTA): ${error?.message || error}`);
     }
   }
 
@@ -169,10 +176,11 @@ export async function updateMember(id: string, updates: Partial<Omit<Member, 'ID
     ID_Anggota: id, // Ensure ID remains immutable
   };
 
-  members[index] = updatedMember;
-  memoryStore.setMembers([...members]);
-
   const client = getSheetsClient();
+  if (isGoogleSheetsConfigured() && !client) {
+    throw new Error('Gagal menghubungkan ke Google Sheets API. Periksa kredensial Service Account.');
+  }
+
   if (client) {
     try {
       // Find row index in sheet (+2 because row 1 is header, 1-indexed)
@@ -201,10 +209,14 @@ export async function updateMember(id: string, updates: Partial<Omit<Member, 'ID
           values: [rowData],
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating member in Google Sheets:', error);
+      throw new Error(`Gagal memperbarui data Anggota di Google Sheets (01_ANGGOTA): ${error?.message || error}`);
     }
   }
+
+  members[index] = updatedMember;
+  memoryStore.setMembers([...members]);
 
   return updatedMember;
 }
