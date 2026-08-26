@@ -12,12 +12,15 @@ import {
   Expense,
 } from '../../src/types/index.ts';
 
-// Pre-hashed passwords for default users (password: 'admin123', 'bendahara123', 'pengurus123', 'anggota123')
+// Pre-hashed passwords for default users
 export const DEFAULT_PASSWORDS = {
   admin: 'admin123',
   bendahara: 'bendahara123',
   pengurus: 'pengurus123',
   anggota: 'anggota123',
+  admin_sijaka: 'AdminSijaka2026!',
+  bendahara_sijaka: 'BendaharaSijaka2026!',
+  pengurus_sijaka: 'PengurusSijaka2026!',
 };
 
 export function getInitialMembers(): Member[] {
@@ -188,6 +191,39 @@ export function getInitialUsers(): User[] {
       Status: 'Aktif',
       Tanggal_Dibuat: '2023-04-10',
       Terakhir_Login: '2026-08-18 10:00:00',
+      MustChangePassword: true,
+    },
+    {
+      ID_User: 'USR005',
+      Nama: 'Admin SIJAKA',
+      Username: 'admin_sijaka',
+      Password: bcrypt.hashSync(DEFAULT_PASSWORDS.admin_sijaka, salt),
+      Role: 'ADMIN',
+      Status: 'Aktif',
+      Tanggal_Dibuat: '2026-08-26',
+      Terakhir_Login: undefined,
+      MustChangePassword: true,
+    },
+    {
+      ID_User: 'USR006',
+      Nama: 'Bendahara SIJAKA',
+      Username: 'bendahara_sijaka',
+      Password: bcrypt.hashSync(DEFAULT_PASSWORDS.bendahara_sijaka, salt),
+      Role: 'BENDAHARA',
+      Status: 'Aktif',
+      Tanggal_Dibuat: '2026-08-26',
+      Terakhir_Login: undefined,
+      MustChangePassword: true,
+    },
+    {
+      ID_User: 'USR007',
+      Nama: 'Pengurus SIJAKA',
+      Username: 'pengurus_sijaka',
+      Password: bcrypt.hashSync(DEFAULT_PASSWORDS.pengurus_sijaka, salt),
+      Role: 'PENGURUS',
+      Status: 'Aktif',
+      Tanggal_Dibuat: '2026-08-26',
+      Terakhir_Login: undefined,
       MustChangePassword: true,
     },
   ];
