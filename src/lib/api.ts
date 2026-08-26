@@ -35,6 +35,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const token = getStoredToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
     ...(options.headers as Record<string, string>),
   };
 
@@ -48,19 +49,56 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       headers,
     });
 
-    const data = await res.json();
+    const contentType = res.headers.get('content-type') || '';
+    let data: any = null;
+
+    if (contentType.includes('application/json')) {
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+    } else {
+      const rawText = await res.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = null;
+      }
+    }
 
     if (!res.ok) {
       if (res.status === 401) {
         removeStoredToken();
       }
-      throw new Error(data.message || 'Gagal terhubung ke database. Silakan coba lagi.');
+      const errorMsg =
+        data?.message ||
+        (res.status === 404
+          ? 'Layanan atau data yang diminta tidak ditemukan (404).'
+          : res.status === 500
+          ? 'Terjadi kesalahan pada server saat memproses data. Silakan coba beberapa saat lagi.'
+          : res.status === 502 || res.status === 503 || res.status === 504
+          ? 'Server sedang sibuk atau dalam pemeliharaan. Silakan coba sesaat lagi.'
+          : `Gagal memproses permintaan (Status: ${res.status}). Silakan coba lagi.`);
+      throw new Error(errorMsg);
+    }
+
+    if (!data) {
+      throw new Error('Respon dari server tidak valid. Silakan coba lagi.');
     }
 
     return data;
   } catch (error: any) {
     if (error.message && error.message.includes('Failed to fetch')) {
-      throw new Error('Gagal terhubung ke server SIJAKA. Silakan periksa koneksi Anda.');
+      throw new Error('Gagal terhubung ke server SIJAKA. Silakan periksa koneksi internet Anda.');
+    }
+    if (
+      error.message &&
+      (error.message.includes('is not valid JSON') ||
+        error.message.includes('Unexpected token') ||
+        error.message.includes('JSON.parse'))
+    ) {
+      throw new Error('Terjadi kendala saat memproses respon dari server. Silakan coba lagi.');
     }
     throw error;
   }

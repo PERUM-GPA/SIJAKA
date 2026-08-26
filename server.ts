@@ -91,7 +91,13 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use((err: any, _req: Request, res: Response, next: any) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      return res.status(400).json({ success: false, message: 'Format data JSON pada permintaan tidak valid.' });
+    }
+    next(err);
+  });
   app.use(cookieParser());
 
   // ==========================================
@@ -2971,6 +2977,21 @@ async function startServer() {
       console.error('Error exporting Excel:', error);
       res.status(500).json({ success: false, message: error.message || 'Gagal mengekspor laporan ke Excel.' });
     }
+  });
+
+  // ------------------------------------------
+  // API 404 & GLOBAL ERROR HANDLER
+  // ------------------------------------------
+  app.all('/api/*', (_req: Request, res: Response) => {
+    res.status(404).json({ success: false, message: 'Endpoint API tidak ditemukan.' });
+  });
+
+  app.use('/api', (err: any, _req: Request, res: Response, _next: any) => {
+    console.error('Unhandled API Error:', err);
+    res.status(500).json({
+      success: false,
+      message: err?.message || 'Terjadi kesalahan pada server saat memproses permintaan API.',
+    });
   });
 
   // ------------------------------------------
