@@ -32,12 +32,6 @@ export function LoginView({ onLoginSuccess, onBackToPublic }: LoginViewProps) {
     }
   };
 
-  const handleQuickFill = (userVal: string, passVal: string) => {
-    setUsername(userVal);
-    setPassword(passVal);
-    setErrorMessage('');
-  };
-
   return (
     <div id="login-view-root" className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* Background Decorative Accents */}
@@ -146,54 +140,6 @@ export function LoginView({ onLoginSuccess, onBackToPublic }: LoginViewProps) {
               )}
             </button>
           </form>
-
-          {/* Quick Demo Login Preset Helper */}
-          <div className="mt-6 pt-5 border-t border-slate-700/60">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2.5 text-center">
-              Pilihan Akun Demo (Klik untuk Isi Cepat)
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                id="btn-fill-admin"
-                type="button"
-                onClick={() => handleQuickFill('admin', 'admin123')}
-                className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 text-left transition-colors cursor-pointer"
-              >
-                <p className="font-semibold text-purple-300">Admin</p>
-                <p className="text-[10px] text-slate-400">admin / admin123</p>
-              </button>
-
-              <button
-                id="btn-fill-bendahara"
-                type="button"
-                onClick={() => handleQuickFill('bendahara', 'bendahara123')}
-                className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 text-left transition-colors cursor-pointer"
-              >
-                <p className="font-semibold text-blue-300">Bendahara</p>
-                <p className="text-[10px] text-slate-400">bendahara / bendahara123</p>
-              </button>
-
-              <button
-                id="btn-fill-pengurus"
-                type="button"
-                onClick={() => handleQuickFill('pengurus', 'pengurus123')}
-                className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 text-left transition-colors cursor-pointer"
-              >
-                <p className="font-semibold text-emerald-300">Pengurus</p>
-                <p className="text-[10px] text-slate-400">pengurus / pengurus123</p>
-              </button>
-
-              <button
-                id="btn-fill-anggota"
-                type="button"
-                onClick={() => handleQuickFill('anggota', 'anggota123')}
-                className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 text-left transition-colors cursor-pointer"
-              >
-                <p className="font-semibold text-amber-300">Anggota</p>
-                <p className="text-[10px] text-slate-400">anggota / anggota123</p>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security Note */}
