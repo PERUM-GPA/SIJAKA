@@ -18,7 +18,8 @@ export async function getAllContributions(): Promise<Contribution[]> {
 
     const rows = response.data.values;
     if (!rows || rows.length === 0) {
-      return memoryStore.getContributions();
+      memoryStore.setContributions([]);
+      return [];
     }
 
     const contributions: Contribution[] = rows.map((row) => ({

@@ -44,7 +44,8 @@ export async function getAllCashTransactions(): Promise<CashTransaction[]> {
 
     const rows = res.data.values || [];
     if (rows.length === 0) {
-      return [...memoryStore.getCashTransactions()];
+      memoryStore.setCashTransactions([]);
+      return [];
     }
 
     const transactions: CashTransaction[] = rows.map((row) => ({
