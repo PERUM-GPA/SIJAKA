@@ -23,6 +23,14 @@ function toTextCell(val?: string): string {
   return trimmed.startsWith("'") ? trimmed : `'${trimmed}`;
 }
 
+export function normalizeRT(val: any): RTEnum {
+  const clean = String(val || '').replace(/[^0-9]/g, '');
+  if (clean === '7' || clean === '07') return '07';
+  if (clean === '10') return '10';
+  if (clean === '6' || clean === '06') return '06';
+  return '06';
+}
+
 export async function getAllMembers(): Promise<Member[]> {
   const client = getSheetsClient();
   if (!client) {
@@ -71,7 +79,7 @@ export async function getAllMembers(): Promise<Member[]> {
         Tempat_Lahir: String(rowF[4] || rowU[4] || ''),
         Tanggal_Lahir: String(rowF[5] || rowU[5] || ''),
         Alamat: String(rowF[6] || rowU[6] || ''),
-        RT: (String(rowF[7] || rowU[7] || '06') as RTEnum),
+        RT: normalizeRT(rowF[7] || rowU[7]),
         No_HP: String(rowF[8] || rowU[8] || ''),
         Status: (String(rowF[9] || rowU[9] || 'Aktif') as MemberStatus),
         Tanggal_Daftar: String(rowF[10] || rowU[10] || ''),
@@ -147,7 +155,7 @@ export async function createMember(data: Omit<Member, 'ID_Anggota'> & { ID_Anggo
     Tempat_Lahir: data.Tempat_Lahir,
     Tanggal_Lahir: data.Tanggal_Lahir,
     Alamat: data.Alamat,
-    RT: data.RT,
+    RT: normalizeRT(data.RT),
     No_HP: data.No_HP,
     Status: data.Status,
     Tanggal_Daftar: data.Tanggal_Daftar || new Date().toISOString().split('T')[0],
@@ -219,6 +227,7 @@ export async function updateMember(id: string, updates: Partial<Omit<Member, 'ID
   const updatedMember: Member = {
     ...current,
     ...updates,
+    RT: updates.RT ? normalizeRT(updates.RT) : current.RT,
     ID_Anggota: id, // Ensure ID remains immutable
   };
 
