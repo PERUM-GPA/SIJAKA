@@ -33,6 +33,7 @@ import {
   getContributionById,
   getContributionsByMemberId,
   createContribution,
+  updateContribution,
   checkPaymentExists,
 } from './lib/googleSheets/iuran.ts';
 import {
@@ -1584,6 +1585,53 @@ export function createApp() {
     } catch (error: any) {
       console.error('Error creating contribution:', error);
       res.status(400).json({ success: false, message: error.message || 'Gagal mencatat pembayaran iuran.' });
+    }
+  });
+
+  // Update Contribution Payment (ADMIN, BENDAHARA, PENGURUS)
+  app.put('/api/iuran/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+      const { Periode_Bulan, Periode_Tahun, Tanggal_Bayar, Nominal, Metode, Keterangan } = req.body;
+
+      const existing = await getContributionById(id);
+      if (!existing) {
+        res.status(404).json({ success: false, message: `Transaksi iuran ${id} tidak ditemukan.` });
+        return;
+      }
+
+      const member = await getMemberById(existing.ID_Anggota);
+
+      const updated = await updateContribution(id, {
+        Periode_Bulan: Periode_Bulan !== undefined ? Number(Periode_Bulan) : undefined,
+        Periode_Tahun: Periode_Tahun !== undefined ? Number(Periode_Tahun) : undefined,
+        Tanggal_Bayar,
+        Nominal: Nominal !== undefined ? Number(Nominal) : undefined,
+        Metode,
+        Petugas: user.Nama,
+        Keterangan,
+      });
+
+      // Audit Log 09_LOG_AKTIVITAS with action UPDATE and Record_ID = id
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'UPDATE',
+        Modul: 'IURAN',
+        Record_ID: id,
+        Deskripsi: `Koreksi iuran: ${member?.Nama || existing.ID_Anggota} Periode ${updated.Periode_Bulan}/${updated.Periode_Tahun} Rp${updated.Nominal.toLocaleString('id-ID')} (${updated.Metode}) oleh ${user.Nama}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Data transaksi iuran ${id} berhasil diperbarui.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      console.error('Error updating contribution:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui data iuran.' });
     }
   });
 

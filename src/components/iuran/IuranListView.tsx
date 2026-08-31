@@ -4,6 +4,7 @@ import {
   Plus,
   Search,
   Printer,
+  Edit3,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -82,6 +83,9 @@ export function IuranListView() {
   // Modals & Feedback
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedMemberForPayment, setSelectedMemberForPayment] = useState<string | undefined>(undefined);
+  const [selectedContributionForEdit, setSelectedContributionForEdit] = useState<
+    (Contribution & { namaAnggota?: string; rtAnggota?: string }) | null
+  >(null);
   const [selectedContributionForReceipt, setSelectedContributionForReceipt] = useState<
     (Contribution & { namaAnggota?: string; rtAnggota?: string }) | null
   >(null);
@@ -150,7 +154,14 @@ export function IuranListView() {
   }, [search, bulanFilter, tahunFilter, rtFilter, metodeFilter, page]);
 
   const handleOpenForm = (memberId?: string) => {
+    setSelectedContributionForEdit(null);
     setSelectedMemberForPayment(memberId);
+    setIsFormModalOpen(true);
+  };
+
+  const handleOpenEdit = (contrib: Contribution & { namaAnggota?: string; rtAnggota?: string }) => {
+    setSelectedContributionForEdit(contrib);
+    setSelectedMemberForPayment(undefined);
     setIsFormModalOpen(true);
   };
 
@@ -472,15 +483,28 @@ export function IuranListView() {
                         </td>
 
                         <td className="px-4 py-3.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenReceipt(item)}
-                            title="Cetak Kuitansi Resmi"
-                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-semibold transition-colors cursor-pointer border border-slate-200"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span>Kuitansi</span>
-                          </button>
+                          <div className="flex items-center justify-end space-x-1.5">
+                            {canManage && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEdit(item)}
+                                title="Koreksi / Edit Data Iuran"
+                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-semibold transition-colors cursor-pointer border border-amber-200 shadow-2xs"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Edit</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReceipt(item)}
+                              title="Cetak Kuitansi Resmi"
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-semibold transition-colors cursor-pointer border border-slate-200"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Kuitansi</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -672,17 +696,22 @@ export function IuranListView() {
         </div>
       )}
 
-      {/* Form Modal */}
+      {/* Form Modal (Create or Edit) */}
       <IuranFormModal
         isOpen={isFormModalOpen}
-        onClose={() => setIsFormModalOpen(false)}
+        onClose={() => {
+          setIsFormModalOpen(false);
+          setSelectedContributionForEdit(null);
+        }}
         onSuccess={(msg) => {
           setFeedback({ type: 'success', message: msg });
+          setSelectedContributionForEdit(null);
           fetchContributions();
           if (canManage) fetchArrears();
         }}
         defaultMemberId={selectedMemberForPayment}
         membersList={membersList}
+        editContribution={selectedContributionForEdit}
       />
 
       {/* Official Kwitansi Receipt Modal */}

@@ -260,6 +260,71 @@ async function syncAllTransactions(transactions: CashTransaction[]): Promise<voi
   }
 }
 
+export async function updateLinkedCashTransaction(input: {
+  Sumber_Transaksi: CashTransactionSumber;
+  ID_Sumber: string;
+  Tanggal?: string;
+  Kas_Masuk?: number;
+  Kas_Keluar?: number;
+  Uraian?: string;
+  Metode?: CashTransactionMetode;
+  Nomor_Bukti?: string;
+  Petugas?: string;
+  Keterangan?: string;
+}): Promise<CashTransaction> {
+  const transactions = await getAllCashTransactions();
+
+  const matching = transactions.filter(
+    (t) =>
+      t.Status === 'VALID' &&
+      t.Sumber_Transaksi === input.Sumber_Transaksi &&
+      t.ID_Sumber === input.ID_Sumber
+  );
+
+  if (matching.length === 0) {
+    throw new Error(`Transaksi Buku Kas terkait untuk ${input.Sumber_Transaksi} (${input.ID_Sumber}) tidak ditemukan.`);
+  }
+
+  if (matching.length > 1) {
+    throw new Error(`Ditemukan lebih dari satu transaksi Buku Kas VALID untuk ${input.Sumber_Transaksi} (${input.ID_Sumber}).`);
+  }
+
+  const targetId = matching[0].ID_Transaksi;
+  const index = transactions.findIndex((t) => t.ID_Transaksi === targetId);
+  if (index === -1) {
+    throw new Error(`Transaksi Buku Kas ${targetId} tidak ditemukan.`);
+  }
+
+  const current = transactions[index];
+  const updated: CashTransaction = {
+    ...current,
+    Tanggal: input.Tanggal || current.Tanggal,
+    Kas_Masuk: input.Kas_Masuk !== undefined ? Number(input.Kas_Masuk) : current.Kas_Masuk,
+    Kas_Keluar: input.Kas_Keluar !== undefined ? Number(input.Kas_Keluar) : current.Kas_Keluar,
+    Uraian: input.Uraian !== undefined ? input.Uraian : current.Uraian,
+    Metode: input.Metode !== undefined ? input.Metode : current.Metode,
+    Nomor_Bukti: input.Nomor_Bukti !== undefined ? input.Nomor_Bukti : current.Nomor_Bukti,
+    Petugas: input.Petugas !== undefined ? input.Petugas : current.Petugas,
+    Keterangan: input.Keterangan !== undefined ? input.Keterangan : current.Keterangan,
+  };
+
+  transactions[index] = updated;
+
+  // Recalculate running balance across all VALID transactions
+  let running = 0;
+  for (let i = 0; i < transactions.length; i++) {
+    if (transactions[i].Status === 'VALID') {
+      running += (transactions[i].Kas_Masuk || 0) - (transactions[i].Kas_Keluar || 0);
+      transactions[i].Saldo = running;
+    }
+  }
+
+  memoryStore.setCashTransactions(transactions);
+  await syncAllTransactions(transactions);
+
+  return transactions[index];
+}
+
 export async function getCashSummary(): Promise<CashSummary> {
   const transactions = await getAllCashTransactions();
   const valid = transactions.filter((t) => t.Status === 'VALID');

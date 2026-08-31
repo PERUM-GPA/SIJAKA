@@ -2,7 +2,7 @@ import { Contribution, PaymentMethod, PaymentStatus } from '../../src/types/inde
 import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
 import { getMemberById } from './anggota.ts';
 import { getParsedSettings } from './settings.ts';
-import { createCashTransaction } from './bukuKas.ts';
+import { createCashTransaction, getAllCashTransactions, updateLinkedCashTransaction } from './bukuKas.ts';
 
 export async function getAllContributions(): Promise<Contribution[]> {
   const client = getSheetsClient();
@@ -211,4 +211,139 @@ export async function createContribution(data: {
   }
 
   return newContribution;
+}
+
+export async function updateContribution(
+  id: string,
+  data: {
+    Periode_Bulan?: number;
+    Periode_Tahun?: number;
+    Tanggal_Bayar?: string;
+    Nominal?: number;
+    Metode?: PaymentMethod;
+    Petugas?: string;
+    Keterangan?: string;
+  }
+): Promise<Contribution> {
+  const contributions = await getAllContributions();
+  const index = contributions.findIndex((c) => c.ID_Iuran === id);
+  if (index === -1) {
+    throw new Error(`Data Iuran dengan ID ${id} tidak ditemukan.`);
+  }
+
+  const current = contributions[index];
+
+  // 1. Verify Member exists
+  const member = await getMemberById(current.ID_Anggota);
+  if (!member) {
+    throw new Error('Data Anggota terkait tidak ditemukan.');
+  }
+
+  // 2. Validate Month (1-12) & Year
+  const bulan = data.Periode_Bulan !== undefined ? Number(data.Periode_Bulan) : current.Periode_Bulan;
+  const tahun = data.Periode_Tahun !== undefined ? Number(data.Periode_Tahun) : current.Periode_Tahun;
+
+  if (isNaN(bulan) || bulan < 1 || bulan > 12) {
+    throw new Error('Periode bulan tidak valid. Harus antara 1 sampai 12.');
+  }
+
+  if (isNaN(tahun) || tahun < 2000 || tahun > 2100) {
+    throw new Error('Periode tahun tidak valid.');
+  }
+
+  // 3. Duplicate check excluding the current contribution being updated
+  const duplicate = contributions.find(
+    (c) =>
+      c.ID_Iuran !== id &&
+      c.ID_Anggota === current.ID_Anggota &&
+      c.Periode_Bulan === bulan &&
+      c.Periode_Tahun === tahun &&
+      c.Status === 'Lunas'
+  );
+  if (duplicate) {
+    throw new Error('Anggota ini sudah melakukan pembayaran iuran untuk periode bulan dan tahun tersebut.');
+  }
+
+  // 4. Validate Nominal
+  const nominal = data.Nominal !== undefined ? Number(data.Nominal) : current.Nominal;
+  if (isNaN(nominal) || nominal <= 0) {
+    throw new Error('Nominal iuran harus lebih besar dari 0.');
+  }
+
+  const tanggalBayar = data.Tanggal_Bayar || current.Tanggal_Bayar;
+  const metode = data.Metode || current.Metode;
+  const petugas = data.Petugas || current.Petugas;
+  const keterangan = data.Keterangan !== undefined ? data.Keterangan.trim() : current.Keterangan;
+
+  // 5. Precondition: Check linked Buku Kas (must be exactly 1 VALID entry)
+  const allKas = await getAllCashTransactions();
+  const matchingKas = allKas.filter(
+    (t) => t.Status === 'VALID' && t.Sumber_Transaksi === 'IURAN' && t.ID_Sumber === id
+  );
+  if (matchingKas.length === 0) {
+    throw new Error(`Transaksi Buku Kas terkait untuk Iuran ${id} tidak ditemukan.`);
+  }
+  if (matchingKas.length > 1) {
+    throw new Error(`Ditemukan lebih dari satu transaksi Buku Kas VALID untuk Iuran ${id}. Proses dibatalkan.`);
+  }
+
+  const updatedContribution: Contribution = {
+    ...current,
+    Periode_Bulan: bulan,
+    Periode_Tahun: tahun,
+    Tanggal_Bayar: tanggalBayar,
+    Nominal: nominal,
+    Metode: metode,
+    Petugas: petugas,
+    Keterangan: keterangan || undefined,
+  };
+
+  // 6. Update in Google Sheets
+  const client = getSheetsClient();
+  if (client) {
+    try {
+      const rowData = [
+        updatedContribution.ID_Iuran,
+        updatedContribution.ID_Anggota,
+        updatedContribution.Periode_Bulan.toString(),
+        updatedContribution.Periode_Tahun.toString(),
+        updatedContribution.Tanggal_Bayar,
+        updatedContribution.Nominal.toString(),
+        updatedContribution.Status,
+        updatedContribution.Metode,
+        updatedContribution.Petugas,
+        updatedContribution.Keterangan || '',
+      ];
+
+      const rowIndex = index + 2;
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.IURAN}!A${rowIndex}:J${rowIndex}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [rowData],
+        },
+      });
+    } catch (error) {
+      console.error('Error updating contribution in Google Sheets:', error);
+    }
+  }
+
+  // 7. Update memory store
+  contributions[index] = updatedContribution;
+  memoryStore.setContributions(contributions);
+
+  // 8. Update linked Buku Kas in-place
+  await updateLinkedCashTransaction({
+    Sumber_Transaksi: 'IURAN',
+    ID_Sumber: id,
+    Tanggal: tanggalBayar,
+    Kas_Masuk: nominal,
+    Uraian: `Penerimaan Iuran ${member.Nama} (${updatedContribution.ID_Anggota}) Periode ${bulan}/${tahun}`,
+    Metode: metode === 'Transfer' ? 'Transfer' : 'Tunai',
+    Petugas: petugas,
+    Keterangan: keterangan || `Iuran Periode ${bulan}/${tahun}`,
+  });
+
+  return updatedContribution;
 }

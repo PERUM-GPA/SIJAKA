@@ -325,6 +325,21 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    update: (
+      id: string,
+      data: {
+        Periode_Bulan?: number;
+        Periode_Tahun?: number;
+        Tanggal_Bayar?: string;
+        Nominal?: number;
+        Metode?: string;
+        Keterangan?: string;
+      }
+    ) =>
+      request<{ success: boolean; message: string; data: Contribution }>(`/api/iuran/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
     checkDuplicate: (idAnggota: string, bulan: number, tahun: number) =>
       request<{ success: boolean; isDuplicate: boolean; message: string }>(
         `/api/iuran/check-duplicate?idAnggota=${encodeURIComponent(idAnggota)}&bulan=${bulan}&tahun=${tahun}`
