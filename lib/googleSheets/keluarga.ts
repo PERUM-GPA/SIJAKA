@@ -2,6 +2,28 @@ import { Family, FamilyRelation, FamilyStatus, HeirCandidate } from '../../src/t
 import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore } from './client.ts';
 import { getMemberById } from './anggota.ts';
 
+function parseIdString(unformattedVal: any, formattedVal: any): string {
+  if (unformattedVal !== undefined && unformattedVal !== null && unformattedVal !== '') {
+    if (typeof unformattedVal === 'number') {
+      return BigInt(Math.round(unformattedVal)).toString();
+    }
+    const str = String(unformattedVal).trim();
+    return str.startsWith("'") ? str.substring(1) : str;
+  }
+  if (formattedVal !== undefined && formattedVal !== null && formattedVal !== '') {
+    const str = String(formattedVal).trim();
+    return str.startsWith("'") ? str.substring(1) : str;
+  }
+  return '';
+}
+
+function toTextCell(val?: string): string {
+  if (!val) return '';
+  const trimmed = String(val).trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith("'") ? trimmed : `'${trimmed}`;
+}
+
 export async function getAllFamilies(): Promise<Family[]> {
   const client = getSheetsClient();
   if (!client) {
@@ -9,29 +31,53 @@ export async function getAllFamilies(): Promise<Family[]> {
   }
 
   try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.KELUARGA}!A2:K`,
-    });
+    const [formattedRes, unformattedRes] = await Promise.all([
+      client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.KELUARGA}!A2:K`,
+        valueRenderOption: 'FORMATTED_VALUE',
+      }),
+      client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.KELUARGA}!A2:K`,
+        valueRenderOption: 'UNFORMATTED_VALUE',
+      }),
+    ]);
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
+    const formattedRows = formattedRes.data.values || [];
+    const unformattedRows = unformattedRes.data.values || [];
+
+    if (formattedRows.length === 0 && unformattedRows.length === 0) {
       return [];
     }
 
-    const families: Family[] = rows.map((row) => ({
-      ID_Keluarga: row[0] || '',
-      ID_Anggota: row[1] || '',
-      NIK: row[2] || undefined,
-      Nama: row[3] || '',
-      Tempat_Lahir: row[4] || undefined,
-      Tanggal_Lahir: row[5] || undefined,
-      Hubungan: (row[6] as FamilyRelation) || 'Lainnya',
-      No_HP: row[7] || undefined,
-      Status: (row[8] as FamilyStatus) || 'Aktif',
-      Calon_Ahli_Waris: (row[9] as HeirCandidate) || 'Tidak',
-      Keterangan: row[10] || undefined,
-    })).filter((f) => f.ID_Keluarga !== '');
+    const maxRows = Math.max(formattedRows.length, unformattedRows.length);
+    const families: Family[] = [];
+
+    for (let i = 0; i < maxRows; i++) {
+      const rowF = formattedRows[i] || [];
+      const rowU = unformattedRows[i] || [];
+
+      const id = String(rowF[0] || rowU[0] || '').trim();
+      if (!id) continue;
+
+      const memberId = String(rowF[1] || rowU[1] || '').trim();
+      const rawNik = parseIdString(rowU[2], rowF[2]);
+
+      families.push({
+        ID_Keluarga: id,
+        ID_Anggota: memberId,
+        NIK: rawNik ? rawNik : undefined,
+        Nama: String(rowF[3] || rowU[3] || ''),
+        Tempat_Lahir: (rowF[4] || rowU[4]) ? String(rowF[4] || rowU[4]) : undefined,
+        Tanggal_Lahir: (rowF[5] || rowU[5]) ? String(rowF[5] || rowU[5]) : undefined,
+        Hubungan: (String(rowF[6] || rowU[6] || 'Lainnya') as FamilyRelation),
+        No_HP: (rowF[7] || rowU[7]) ? String(rowF[7] || rowU[7]) : undefined,
+        Status: (String(rowF[8] || rowU[8] || 'Aktif') as FamilyStatus),
+        Calon_Ahli_Waris: (String(rowF[9] || rowU[9] || 'Tidak') as HeirCandidate),
+        Keterangan: (rowF[10] || rowU[10]) ? String(rowF[10] || rowU[10]) : undefined,
+      });
+    }
 
     memoryStore.setFamilies(families);
     return families;
@@ -121,7 +167,7 @@ export async function createFamily(data: {
       const rowData = [
         newFamily.ID_Keluarga,
         newFamily.ID_Anggota,
-        newFamily.NIK || '',
+        toTextCell(newFamily.NIK),
         newFamily.Nama,
         newFamily.Tempat_Lahir || '',
         newFamily.Tanggal_Lahir || '',
@@ -183,7 +229,7 @@ export async function updateFamily(
       const rowData = [
         updatedFamily.ID_Keluarga,
         updatedFamily.ID_Anggota,
-        updatedFamily.NIK || '',
+        toTextCell(updatedFamily.NIK),
         updatedFamily.Nama,
         updatedFamily.Tempat_Lahir || '',
         updatedFamily.Tanggal_Lahir || '',

@@ -1,6 +1,28 @@
 import { Member, RTEnum, MemberStatus } from '../../src/types/index.ts';
 import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
 
+function parseIdString(unformattedVal: any, formattedVal: any): string {
+  if (unformattedVal !== undefined && unformattedVal !== null && unformattedVal !== '') {
+    if (typeof unformattedVal === 'number') {
+      return BigInt(Math.round(unformattedVal)).toString();
+    }
+    const str = String(unformattedVal).trim();
+    return str.startsWith("'") ? str.substring(1) : str;
+  }
+  if (formattedVal !== undefined && formattedVal !== null && formattedVal !== '') {
+    const str = String(formattedVal).trim();
+    return str.startsWith("'") ? str.substring(1) : str;
+  }
+  return '';
+}
+
+function toTextCell(val?: string): string {
+  if (!val) return '';
+  const trimmed = String(val).trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith("'") ? trimmed : `'${trimmed}`;
+}
+
 export async function getAllMembers(): Promise<Member[]> {
   const client = getSheetsClient();
   if (!client) {
@@ -8,31 +30,55 @@ export async function getAllMembers(): Promise<Member[]> {
   }
 
   try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.ANGGOTA}!A2:M`,
-    });
+    const [formattedRes, unformattedRes] = await Promise.all([
+      client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.ANGGOTA}!A2:M`,
+        valueRenderOption: 'FORMATTED_VALUE',
+      }),
+      client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.ANGGOTA}!A2:M`,
+        valueRenderOption: 'UNFORMATTED_VALUE',
+      }),
+    ]);
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
+    const formattedRows = formattedRes.data.values || [];
+    const unformattedRows = unformattedRes.data.values || [];
+
+    if (formattedRows.length === 0 && unformattedRows.length === 0) {
       return [];
     }
 
-    const members: Member[] = rows.map((row) => ({
-      ID_Anggota: row[0] || '',
-      No_KK: row[1] || '',
-      NIK: row[2] || '',
-      Nama: row[3] || '',
-      Tempat_Lahir: row[4] || '',
-      Tanggal_Lahir: row[5] || '',
-      Alamat: row[6] || '',
-      RT: (row[7] as RTEnum) || '06',
-      No_HP: row[8] || '',
-      Status: (row[9] as MemberStatus) || 'Aktif',
-      Tanggal_Daftar: row[10] || '',
-      Tanggal_Nonaktif: row[11] || undefined,
-      Keterangan: row[12] || undefined,
-    })).filter((m) => m.ID_Anggota !== '');
+    const maxRows = Math.max(formattedRows.length, unformattedRows.length);
+    const members: Member[] = [];
+
+    for (let i = 0; i < maxRows; i++) {
+      const rowF = formattedRows[i] || [];
+      const rowU = unformattedRows[i] || [];
+
+      const id = String(rowF[0] || rowU[0] || '').trim();
+      if (!id) continue;
+
+      const noKk = parseIdString(rowU[1], rowF[1]);
+      const nik = parseIdString(rowU[2], rowF[2]);
+
+      members.push({
+        ID_Anggota: id,
+        No_KK: noKk,
+        NIK: nik,
+        Nama: String(rowF[3] || rowU[3] || ''),
+        Tempat_Lahir: String(rowF[4] || rowU[4] || ''),
+        Tanggal_Lahir: String(rowF[5] || rowU[5] || ''),
+        Alamat: String(rowF[6] || rowU[6] || ''),
+        RT: (String(rowF[7] || rowU[7] || '06') as RTEnum),
+        No_HP: String(rowF[8] || rowU[8] || ''),
+        Status: (String(rowF[9] || rowU[9] || 'Aktif') as MemberStatus),
+        Tanggal_Daftar: String(rowF[10] || rowU[10] || ''),
+        Tanggal_Nonaktif: (rowF[11] || rowU[11]) ? String(rowF[11] || rowU[11]) : undefined,
+        Keterangan: (rowF[12] || rowU[12]) ? String(rowF[12] || rowU[12]) : undefined,
+      });
+    }
 
     // Keep memory in sync
     memoryStore.setMembers(members);
@@ -118,8 +164,8 @@ export async function createMember(data: Omit<Member, 'ID_Anggota'> & { ID_Anggo
     try {
       const rowData = [
         newMember.ID_Anggota,
-        newMember.No_KK,
-        newMember.NIK,
+        toTextCell(newMember.No_KK),
+        toTextCell(newMember.NIK),
         newMember.Nama,
         newMember.Tempat_Lahir,
         newMember.Tanggal_Lahir,
@@ -187,8 +233,8 @@ export async function updateMember(id: string, updates: Partial<Omit<Member, 'ID
       const rowIndex = index + 2;
       const rowData = [
         updatedMember.ID_Anggota,
-        updatedMember.No_KK,
-        updatedMember.NIK,
+        toTextCell(updatedMember.No_KK),
+        toTextCell(updatedMember.NIK),
         updatedMember.Nama,
         updatedMember.Tempat_Lahir,
         updatedMember.Tanggal_Lahir,

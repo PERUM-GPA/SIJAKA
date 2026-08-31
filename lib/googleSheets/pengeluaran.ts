@@ -45,7 +45,8 @@ export async function getAllExpenses(): Promise<Expense[]> {
 
     const rows = res.data.values || [];
     if (rows.length === 0) {
-      return [...memoryStore.getExpenses()];
+      memoryStore.setExpenses([]);
+      return [];
     }
 
     const expenses: Expense[] = rows.map((row) => ({
