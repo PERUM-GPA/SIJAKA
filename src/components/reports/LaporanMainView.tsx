@@ -237,15 +237,15 @@ export const LaporanMainView: React.FC<LaporanMainViewProps> = ({ currentUser })
       doc.setFont('helvetica', 'normal');
       doc.text('Mengetahui,', 30, currentY);
       doc.text('Ketua Jamaah Tahlil', 30, currentY + 4);
-      doc.text('( Bpk. Sumardi )', 30, currentY + 22);
+      doc.text('( Bpk. Agus Wardjo )', 30, currentY + 22);
 
       doc.text('Diverifikasi Oleh,', 95, currentY);
       doc.text('Bendahara', 95, currentY + 4);
-      doc.text('( Bpk. H. Rahmat )', 95, currentY + 22);
+      doc.text("( Bpk. Imam Rifa'i )", 95, currentY + 22);
 
       doc.text(`Malang, ${new Date().toLocaleDateString('id-ID')}`, 155, currentY);
       doc.text('Petugas Operator', 155, currentY + 4);
-      doc.text(`( ${currentUser?.Nama || 'Admin'} )`, 155, currentY + 22);
+      doc.text('( Bpk. Safari )', 155, currentY + 22);
 
       doc.save(`SIJAKA_Laporan_${new Date().toISOString().split('T')[0]}.pdf`);
       setIsExportModalOpen(false);

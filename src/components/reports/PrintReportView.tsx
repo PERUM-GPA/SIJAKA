@@ -443,7 +443,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
             <p className="text-gray-600">Ketua Jamaah Tahlil</p>
             <div className="h-16"></div>
             <p className="font-bold text-gray-900 border-t border-gray-400 pt-1 inline-block min-w-[120px]">
-              ( Bpk. Sumardi )
+              ( Bpk. Agus Wardjo )
             </p>
           </div>
 
@@ -452,7 +452,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
             <p className="text-gray-600">Bendahara</p>
             <div className="h-16"></div>
             <p className="font-bold text-gray-900 border-t border-gray-400 pt-1 inline-block min-w-[120px]">
-              ( Bpk. H. Rahmat )
+              ( Bpk. Imam Rifa'i )
             </p>
           </div>
 
@@ -461,7 +461,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
             <p className="text-gray-600">Petugas Operator</p>
             <div className="h-16"></div>
             <p className="font-bold text-gray-900 border-t border-gray-400 pt-1 inline-block min-w-[120px]">
-              ( {currentUser?.Nama || 'Petugas SIJAKA'} )
+              ( Bpk. Safari )
             </p>
           </div>
         </div>
