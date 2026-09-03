@@ -1,5 +1,5 @@
 import { Member, RTEnum, MemberStatus } from '../../src/types/index.ts';
-import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
+import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, HEADERS, memoryStore, cachedRead, invalidateCache } from './client.ts';
 
 function parseIdString(unformattedVal: any, formattedVal: any): string {
   if (unformattedVal !== undefined && unformattedVal !== null && unformattedVal !== '') {
@@ -37,67 +37,53 @@ export async function getAllMembers(): Promise<Member[]> {
     return memoryStore.getMembers();
   }
 
-  try {
-    const [formattedRes, unformattedRes] = await Promise.all([
-      client.sheets.spreadsheets.values.get({
-        spreadsheetId: client.spreadsheetId,
-        range: `${SHEET_NAMES.ANGGOTA}!A2:M`,
-        valueRenderOption: 'FORMATTED_VALUE',
-      }),
-      client.sheets.spreadsheets.values.get({
+  return cachedRead(
+    'members',
+    async () => {
+      const res = await client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
         range: `${SHEET_NAMES.ANGGOTA}!A2:M`,
         valueRenderOption: 'UNFORMATTED_VALUE',
-      }),
-    ]);
-
-    const formattedRows = formattedRes.data.values || [];
-    const unformattedRows = unformattedRes.data.values || [];
-
-    if (formattedRows.length === 0 && unformattedRows.length === 0) {
-      return [];
-    }
-
-    const maxRows = Math.max(formattedRows.length, unformattedRows.length);
-    const members: Member[] = [];
-
-    for (let i = 0; i < maxRows; i++) {
-      const rowF = formattedRows[i] || [];
-      const rowU = unformattedRows[i] || [];
-
-      const id = String(rowF[0] || rowU[0] || '').trim();
-      if (!id) continue;
-
-      const noKk = parseIdString(rowU[1], rowF[1]);
-      const nik = parseIdString(rowU[2], rowF[2]);
-
-      members.push({
-        ID_Anggota: id,
-        No_KK: noKk,
-        NIK: nik,
-        Nama: String(rowF[3] || rowU[3] || ''),
-        Tempat_Lahir: String(rowF[4] || rowU[4] || ''),
-        Tanggal_Lahir: String(rowF[5] || rowU[5] || ''),
-        Alamat: String(rowF[6] || rowU[6] || ''),
-        RT: normalizeRT(rowF[7] || rowU[7]),
-        No_HP: String(rowF[8] || rowU[8] || ''),
-        Status: (String(rowF[9] || rowU[9] || 'Aktif') as MemberStatus),
-        Tanggal_Daftar: String(rowF[10] || rowU[10] || ''),
-        Tanggal_Nonaktif: (rowF[11] || rowU[11]) ? String(rowF[11] || rowU[11]) : undefined,
-        Keterangan: (rowF[12] || rowU[12]) ? String(rowF[12] || rowU[12]) : undefined,
       });
-    }
 
-    // Keep memory in sync
-    memoryStore.setMembers(members);
-    return members;
-  } catch (error: any) {
-    console.error('Error fetching members from Google Sheets:', error);
-    if (isGoogleSheetsConfigured()) {
-      throw new Error(`Gagal membaca data dari Google Sheets (01_ANGGOTA): ${error?.message || error}`);
-    }
-    return memoryStore.getMembers();
-  }
+      const rows = res.data.values || [];
+      if (rows.length === 0) {
+        memoryStore.setMembers([]);
+        return [];
+      }
+
+      const members: Member[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i] || [];
+        const id = String(row[0] || '').trim();
+        if (!id) continue;
+
+        const noKk = parseIdString(row[1], row[1]);
+        const nik = parseIdString(row[2], row[2]);
+
+        members.push({
+          ID_Anggota: id,
+          No_KK: noKk,
+          NIK: nik,
+          Nama: String(row[3] || ''),
+          Tempat_Lahir: String(row[4] || ''),
+          Tanggal_Lahir: String(row[5] || ''),
+          Alamat: String(row[6] || ''),
+          RT: normalizeRT(row[7]),
+          No_HP: String(row[8] || ''),
+          Status: (String(row[9] || 'Aktif') as MemberStatus),
+          Tanggal_Daftar: String(row[10] || ''),
+          Tanggal_Nonaktif: row[11] ? String(row[11]) : undefined,
+          Keterangan: row[12] ? String(row[12]) : undefined,
+        });
+      }
+
+      memoryStore.setMembers(members);
+      return members;
+    },
+    () => memoryStore.getMembers(),
+    15000
+  );
 }
 
 export async function getMemberById(id: string): Promise<Member | null> {
@@ -202,6 +188,7 @@ export async function createMember(data: Omit<Member, 'ID_Anggota'> & { ID_Anggo
 
   const updatedMembers = [newMember, ...members];
   memoryStore.setMembers(updatedMembers);
+  invalidateCache('members');
 
   return newMember;
 }
@@ -272,6 +259,7 @@ export async function updateMember(id: string, updates: Partial<Omit<Member, 'ID
 
   members[index] = updatedMember;
   memoryStore.setMembers([...members]);
+  invalidateCache('members');
 
   return updatedMember;
 }
@@ -284,6 +272,7 @@ export async function deleteMember(id: string): Promise<boolean> {
   }
 
   memoryStore.setMembers(filtered);
+  invalidateCache('members');
   // Optional: If connected to sheets, full sheet rewrite or status update
   return true;
 }

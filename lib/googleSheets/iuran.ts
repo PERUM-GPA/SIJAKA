@@ -1,5 +1,5 @@
 import { Contribution, PaymentMethod, PaymentStatus } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, memoryStore, cachedRead, invalidateCache } from './client.ts';
 import { getMemberById } from './anggota.ts';
 import { getParsedSettings } from './settings.ts';
 import { createCashTransaction, getAllCashTransactions, updateLinkedCashTransaction } from './bukuKas.ts';
@@ -10,37 +10,39 @@ export async function getAllContributions(): Promise<Contribution[]> {
     return memoryStore.getContributions();
   }
 
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.IURAN}!A2:J`,
-    });
+  return cachedRead(
+    'contributions',
+    async () => {
+      const response = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.IURAN}!A2:J`,
+      });
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      memoryStore.setContributions([]);
-      return [];
-    }
+      const rows = response.data.values;
+      if (!rows || rows.length === 0) {
+        memoryStore.setContributions([]);
+        return [];
+      }
 
-    const contributions: Contribution[] = rows.map((row) => ({
-      ID_Iuran: row[0] || '',
-      ID_Anggota: row[1] || '',
-      Periode_Bulan: parseInt(row[2], 10) || 1,
-      Periode_Tahun: parseInt(row[3], 10) || new Date().getFullYear(),
-      Tanggal_Bayar: row[4] || '',
-      Nominal: parseInt(row[5], 10) || 5000,
-      Status: (row[6] as PaymentStatus) || 'Lunas',
-      Metode: (row[7] as PaymentMethod) || 'Tunai',
-      Petugas: row[8] || '',
-      Keterangan: row[9] || undefined,
-    })).filter((c) => c.ID_Iuran !== '');
+      const contributions: Contribution[] = rows.map((row) => ({
+        ID_Iuran: row[0] || '',
+        ID_Anggota: row[1] || '',
+        Periode_Bulan: parseInt(row[2], 10) || 1,
+        Periode_Tahun: parseInt(row[3], 10) || new Date().getFullYear(),
+        Tanggal_Bayar: row[4] || '',
+        Nominal: parseInt(row[5], 10) || 5000,
+        Status: (row[6] as PaymentStatus) || 'Lunas',
+        Metode: (row[7] as PaymentMethod) || 'Tunai',
+        Petugas: row[8] || '',
+        Keterangan: row[9] || undefined,
+      })).filter((c) => c.ID_Iuran !== '');
 
-    memoryStore.setContributions(contributions);
-    return contributions;
-  } catch (error) {
-    console.error('Error fetching contributions from Google Sheets, using memory fallback:', error);
-    return memoryStore.getContributions();
-  }
+      memoryStore.setContributions(contributions);
+      return contributions;
+    },
+    () => memoryStore.getContributions(),
+    15000
+  );
 }
 
 export async function getContributionById(id: string): Promise<Contribution | null> {
@@ -189,6 +191,8 @@ export async function createContribution(data: {
   const contributions = await getAllContributions();
   const updatedContributions = [newContribution, ...contributions];
   memoryStore.setContributions(updatedContributions);
+  invalidateCache('contributions');
+  invalidateCache('cashTransactions');
 
   // 5. Automatically record entry in 06_BUKU_KAS (Kas Masuk)
   try {
@@ -332,6 +336,8 @@ export async function updateContribution(
   // 7. Update memory store
   contributions[index] = updatedContribution;
   memoryStore.setContributions(contributions);
+  invalidateCache('contributions');
+  invalidateCache('cashTransactions');
 
   // 8. Update linked Buku Kas in-place
   await updateLinkedCashTransaction({

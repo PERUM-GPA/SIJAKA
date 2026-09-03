@@ -1,5 +1,5 @@
 import { CashTransaction, CashSummary, CashTransactionJenis, CashTransactionSumber, CashTransactionMetode } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore, cachedRead, invalidateCache } from './client.ts';
 
 function formatDateTime(d = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -36,43 +36,45 @@ export async function getAllCashTransactions(): Promise<CashTransaction[]> {
     return [...memoryStore.getCashTransactions()];
   }
 
-  try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.BUKU_KAS}!A2:P`,
-    });
+  return cachedRead(
+    'cashTransactions',
+    async () => {
+      const res = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.BUKU_KAS}!A2:P`,
+      });
 
-    const rows = res.data.values || [];
-    if (rows.length === 0) {
-      memoryStore.setCashTransactions([]);
-      return [];
-    }
+      const rows = res.data.values || [];
+      if (rows.length === 0) {
+        memoryStore.setCashTransactions([]);
+        return [];
+      }
 
-    const transactions: CashTransaction[] = rows.map((row) => ({
-      ID_Transaksi: (row[0] || '').trim(),
-      Tanggal: (row[1] || '').trim(),
-      Jenis_Transaksi: (row[2] || 'KAS_MASUK').trim() as any,
-      Sumber_Transaksi: (row[3] || 'LAINNYA').trim() as any,
-      ID_Sumber: (row[4] || '').trim(),
-      ID_Anggota: (row[5] || '').trim() || undefined,
-      Uraian: (row[6] || '').trim(),
-      Kas_Masuk: Number(row[7] || 0),
-      Kas_Keluar: Number(row[8] || 0),
-      Saldo: Number(row[9] || 0),
-      Metode: (row[10] || 'Tunai').trim() as any,
-      Nomor_Bukti: (row[11] || '').trim() || undefined,
-      Petugas: (row[12] || '').trim(),
-      Status: (row[13] || 'VALID').trim() as any,
-      Keterangan: (row[14] || '').trim() || undefined,
-      Tanggal_Dibuat: (row[15] || '').trim(),
-    }));
+      const transactions: CashTransaction[] = rows.map((row) => ({
+        ID_Transaksi: (row[0] || '').trim(),
+        Tanggal: (row[1] || '').trim(),
+        Jenis_Transaksi: (row[2] || 'KAS_MASUK').trim() as any,
+        Sumber_Transaksi: (row[3] || 'LAINNYA').trim() as any,
+        ID_Sumber: (row[4] || '').trim(),
+        ID_Anggota: (row[5] || '').trim() || undefined,
+        Uraian: (row[6] || '').trim(),
+        Kas_Masuk: Number(row[7] || 0),
+        Kas_Keluar: Number(row[8] || 0),
+        Saldo: Number(row[9] || 0),
+        Metode: (row[10] || 'Tunai').trim() as any,
+        Nomor_Bukti: (row[11] || '').trim() || undefined,
+        Petugas: (row[12] || '').trim(),
+        Status: (row[13] || 'VALID').trim() as any,
+        Keterangan: (row[14] || '').trim() || undefined,
+        Tanggal_Dibuat: (row[15] || '').trim(),
+      }));
 
-    memoryStore.setCashTransactions(transactions);
-    return transactions;
-  } catch (error) {
-    console.error('Error fetching cash transactions from Google Sheets, using memory store:', error);
-    return [...memoryStore.getCashTransactions()];
-  }
+      memoryStore.setCashTransactions(transactions);
+      return transactions;
+    },
+    () => [...memoryStore.getCashTransactions()],
+    15000
+  );
 }
 
 export async function getCashTransactionById(id: string): Promise<CashTransaction | null> {
@@ -152,6 +154,7 @@ export async function createCashTransaction(input: {
   // Update memory store
   transactions.push(newTransaction);
   memoryStore.setCashTransactions(transactions);
+  invalidateCache('cashTransactions');
 
   // Sync to Google Sheets if configured
   const client = getSheetsClient();
@@ -220,6 +223,7 @@ export async function cancelCashTransaction(id: string, reason: string, petugas:
   }
 
   memoryStore.setCashTransactions(transactions);
+  invalidateCache('cashTransactions');
   await syncAllTransactions(transactions);
 
   return updated;
@@ -320,6 +324,7 @@ export async function updateLinkedCashTransaction(input: {
   }
 
   memoryStore.setCashTransactions(transactions);
+  invalidateCache('cashTransactions');
   await syncAllTransactions(transactions);
 
   return transactions[index];

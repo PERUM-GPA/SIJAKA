@@ -1,5 +1,5 @@
 import { ActivityLog, ActionType } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, memoryStore, cachedRead, invalidateCache } from './client.ts';
 
 export async function getAllLogs(): Promise<ActivityLog[]> {
   const client = getSheetsClient();
@@ -7,35 +7,37 @@ export async function getAllLogs(): Promise<ActivityLog[]> {
     return memoryStore.getLogs();
   }
 
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.LOG_AKTIVITAS}!A2:I`,
-    });
+  return cachedRead(
+    'logs',
+    async () => {
+      const response = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.LOG_AKTIVITAS}!A2:I`,
+      });
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      return memoryStore.getLogs();
-    }
+      const rows = response.data.values;
+      if (!rows || rows.length === 0) {
+        return memoryStore.getLogs();
+      }
 
-    const logs: ActivityLog[] = rows.map((row) => ({
-      ID_Log: row[0] || '',
-      Timestamp: row[1] || '',
-      ID_User: row[2] || '',
-      Nama_User: row[3] || '',
-      Aksi: (row[4] as ActionType) || 'LOGIN',
-      Modul: row[5] || '',
-      Record_ID: row[6] || '',
-      Deskripsi: row[7] || '',
-      Status: (row[8] as 'SUCCESS' | 'FAILED') || 'SUCCESS',
-    })).filter((l) => l.ID_Log !== '');
+      const logs: ActivityLog[] = rows.map((row) => ({
+        ID_Log: row[0] || '',
+        Timestamp: row[1] || '',
+        ID_User: row[2] || '',
+        Nama_User: row[3] || '',
+        Aksi: (row[4] as ActionType) || 'LOGIN',
+        Modul: row[5] || '',
+        Record_ID: row[6] || '',
+        Deskripsi: row[7] || '',
+        Status: (row[8] as 'SUCCESS' | 'FAILED') || 'SUCCESS',
+      })).filter((l) => l.ID_Log !== '');
 
-    memoryStore.setLogs(logs);
-    return logs;
-  } catch (error) {
-    console.error('Error fetching logs from Google Sheets, using memory fallback:', error);
-    return memoryStore.getLogs();
-  }
+      memoryStore.setLogs(logs);
+      return logs;
+    },
+    () => memoryStore.getLogs(),
+    15000
+  );
 }
 
 export async function generateNextLogId(): Promise<string> {
@@ -83,6 +85,7 @@ export async function createActivityLog(params: {
   };
 
   memoryStore.addLog(newLog);
+  invalidateCache('logs');
 
   const client = getSheetsClient();
   if (client) {

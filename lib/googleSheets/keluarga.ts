@@ -1,5 +1,5 @@
 import { Family, FamilyRelation, FamilyStatus, HeirCandidate } from '../../src/types/index.ts';
-import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore, cachedRead, invalidateCache } from './client.ts';
 import { getMemberById } from './anggota.ts';
 
 function parseIdString(unformattedVal: any, formattedVal: any): string {
@@ -30,64 +30,52 @@ export async function getAllFamilies(): Promise<Family[]> {
     return memoryStore.getFamilies();
   }
 
-  try {
-    const [formattedRes, unformattedRes] = await Promise.all([
-      client.sheets.spreadsheets.values.get({
-        spreadsheetId: client.spreadsheetId,
-        range: `${SHEET_NAMES.KELUARGA}!A2:K`,
-        valueRenderOption: 'FORMATTED_VALUE',
-      }),
-      client.sheets.spreadsheets.values.get({
+  return cachedRead(
+    'families',
+    async () => {
+      const res = await client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
         range: `${SHEET_NAMES.KELUARGA}!A2:K`,
         valueRenderOption: 'UNFORMATTED_VALUE',
-      }),
-    ]);
-
-    const formattedRows = formattedRes.data.values || [];
-    const unformattedRows = unformattedRes.data.values || [];
-
-    if (formattedRows.length === 0 && unformattedRows.length === 0) {
-      return [];
-    }
-
-    const maxRows = Math.max(formattedRows.length, unformattedRows.length);
-    const families: Family[] = [];
-
-    for (let i = 0; i < maxRows; i++) {
-      const rowF = formattedRows[i] || [];
-      const rowU = unformattedRows[i] || [];
-
-      const id = String(rowF[0] || rowU[0] || '').trim();
-      if (!id) continue;
-
-      const memberId = String(rowF[1] || rowU[1] || '').trim();
-      const rawNik = parseIdString(rowU[2], rowF[2]);
-
-      families.push({
-        ID_Keluarga: id,
-        ID_Anggota: memberId,
-        NIK: rawNik ? rawNik : undefined,
-        Nama: String(rowF[3] || rowU[3] || ''),
-        Tempat_Lahir: (rowF[4] || rowU[4]) ? String(rowF[4] || rowU[4]) : undefined,
-        Tanggal_Lahir: (rowF[5] || rowU[5]) ? String(rowF[5] || rowU[5]) : undefined,
-        Hubungan: (String(rowF[6] || rowU[6] || 'Lainnya') as FamilyRelation),
-        No_HP: (rowF[7] || rowU[7]) ? String(rowF[7] || rowU[7]) : undefined,
-        Status: (String(rowF[8] || rowU[8] || 'Aktif') as FamilyStatus),
-        Calon_Ahli_Waris: (String(rowF[9] || rowU[9] || 'Tidak') as HeirCandidate),
-        Keterangan: (rowF[10] || rowU[10]) ? String(rowF[10] || rowU[10]) : undefined,
       });
-    }
 
-    memoryStore.setFamilies(families);
-    return families;
-  } catch (error: any) {
-    console.error('Error fetching families from Google Sheets:', error);
-    if (isGoogleSheetsConfigured()) {
-      throw new Error(`Gagal membaca data dari Google Sheets (02_KELUARGA): ${error?.message || error}`);
-    }
-    return memoryStore.getFamilies();
-  }
+      const rows = res.data.values || [];
+      if (rows.length === 0) {
+        memoryStore.setFamilies([]);
+        return [];
+      }
+
+      const families: Family[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i] || [];
+        const id = String(row[0] || '').trim();
+        if (!id) continue;
+
+        const memberId = String(row[1] || '').trim();
+        const rawNik = parseIdString(row[2], row[2]);
+
+        families.push({
+          ID_Keluarga: id,
+          ID_Anggota: memberId,
+          NIK: rawNik ? rawNik : undefined,
+          Nama: String(row[3] || ''),
+          Tempat_Lahir: row[4] ? String(row[4]) : undefined,
+          Tanggal_Lahir: row[5] ? String(row[5]) : undefined,
+          Hubungan: (String(row[6] || 'Lainnya') as FamilyRelation),
+          No_HP: row[7] ? String(row[7]) : undefined,
+          Status: (String(row[8] || 'Aktif') as FamilyStatus),
+          Calon_Ahli_Waris: (String(row[9] || 'Tidak') as HeirCandidate),
+          Keterangan: row[10] ? String(row[10]) : undefined,
+        });
+      }
+
+      memoryStore.setFamilies(families);
+      return families;
+    },
+    () => memoryStore.getFamilies(),
+    15000
+  );
 }
 
 export async function getFamilyById(id: string): Promise<Family | null> {
@@ -195,6 +183,7 @@ export async function createFamily(data: {
   const families = await getAllFamilies();
   const updatedFamilies = [newFamily, ...families];
   memoryStore.setFamilies(updatedFamilies);
+  invalidateCache('families');
 
   return newFamily;
 }
@@ -256,6 +245,7 @@ export async function updateFamily(
 
   families[index] = updatedFamily;
   memoryStore.setFamilies([...families]);
+  invalidateCache('families');
 
   return updatedFamily;
 }

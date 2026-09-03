@@ -4,7 +4,7 @@ import {
   SantunanPersetujuanStatus,
   SantunanMetodePencairan,
 } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore, cachedRead, invalidateCache } from './client.ts';
 import { getDeathReportById, completeDeathReport } from './kematian.ts';
 import { getMemberById, updateMember } from './anggota.ts';
 import { createCashTransaction } from './bukuKas.ts';
@@ -44,47 +44,49 @@ export async function getAllSantunan(): Promise<Compensation[]> {
     return [...memoryStore.getSantunan()];
   }
 
-  try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.SANTUNAN}!A2:U`,
-    });
+  return cachedRead(
+    'santunan',
+    async () => {
+      const res = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.SANTUNAN}!A2:U`,
+      });
 
-    const rows = res.data.values || [];
-    if (rows.length === 0) {
-      return [];
-    }
+      const rows = res.data.values || [];
+      if (rows.length === 0) {
+        return [];
+      }
 
-    const items: Compensation[] = rows.map((row) => ({
-      ID_Santunan: (row[0] || '').trim(),
-      ID_Laporan: (row[1] || '').trim(),
-      ID_Anggota: (row[2] || '').trim(),
-      ID_AhliWaris: (row[3] || '').trim(),
-      Nama_Penerima: (row[4] || '').trim(),
-      Hubungan_Penerima: (row[5] || '').trim(),
-      Nominal_Santunan: Number(row[6] || 600000),
-      Tanggal_Pengajuan: (row[7] || '').trim(),
-      Status_Verifikasi: (row[8] || 'MENUNGGU').trim() as SantunanVerifikasiStatus,
-      Diverifikasi_Oleh: (row[9] || '').trim() || undefined,
-      Tanggal_Verifikasi: (row[10] || '').trim() || undefined,
-      Status_Persetujuan: (row[11] || 'MENUNGGU').trim() as SantunanPersetujuanStatus,
-      Disetujui_Oleh: (row[12] || '').trim() || undefined,
-      Tanggal_Persetujuan: (row[13] || '').trim() || undefined,
-      Tanggal_Pencairan: (row[14] || '').trim() || undefined,
-      Metode_Pencairan: (row[15] || '').trim() ? ((row[15] || '').trim() as SantunanMetodePencairan) : undefined,
-      Nomor_Bukti: (row[16] || '').trim() || undefined,
-      Bukti_Pencairan: (row[17] || '').trim() || undefined,
-      Keterangan: (row[18] || '').trim() || undefined,
-      Tanggal_Dibuat: (row[19] || '').trim(),
-      Tanggal_Diperbarui: (row[20] || '').trim(),
-    }));
+      const items: Compensation[] = rows.map((row) => ({
+        ID_Santunan: (row[0] || '').trim(),
+        ID_Laporan: (row[1] || '').trim(),
+        ID_Anggota: (row[2] || '').trim(),
+        ID_AhliWaris: (row[3] || '').trim(),
+        Nama_Penerima: (row[4] || '').trim(),
+        Hubungan_Penerima: (row[5] || '').trim(),
+        Nominal_Santunan: Number(row[6] || 600000),
+        Tanggal_Pengajuan: (row[7] || '').trim(),
+        Status_Verifikasi: (row[8] || 'MENUNGGU').trim() as SantunanVerifikasiStatus,
+        Diverifikasi_Oleh: (row[9] || '').trim() || undefined,
+        Tanggal_Verifikasi: (row[10] || '').trim() || undefined,
+        Status_Persetujuan: (row[11] || 'MENUNGGU').trim() as SantunanPersetujuanStatus,
+        Disetujui_Oleh: (row[12] || '').trim() || undefined,
+        Tanggal_Persetujuan: (row[13] || '').trim() || undefined,
+        Tanggal_Pencairan: (row[14] || '').trim() || undefined,
+        Metode_Pencairan: (row[15] || '').trim() ? ((row[15] || '').trim() as SantunanMetodePencairan) : undefined,
+        Nomor_Bukti: (row[16] || '').trim() || undefined,
+        Bukti_Pencairan: (row[17] || '').trim() || undefined,
+        Keterangan: (row[18] || '').trim() || undefined,
+        Tanggal_Dibuat: (row[19] || '').trim(),
+        Tanggal_Diperbarui: (row[20] || '').trim(),
+      }));
 
-    memoryStore.setSantunan(items);
-    return items;
-  } catch (error) {
-    console.error('Error fetching santunan from Google Sheets, using memory store:', error);
-    return [...memoryStore.getSantunan()];
-  }
+      memoryStore.setSantunan(items);
+      return items;
+    },
+    () => [...memoryStore.getSantunan()],
+    15000
+  );
 }
 
 export async function getSantunanById(id: string): Promise<Compensation | null> {
@@ -150,6 +152,7 @@ export async function createSantunan(input: {
   const items = await getAllSantunan();
   items.push(newSantunan);
   memoryStore.setSantunan(items);
+  invalidateCache('santunan');
 
   const client = getSheetsClient();
   if (client) {
@@ -388,6 +391,8 @@ export async function disburseSantunan(
 }
 
 async function syncAllSantunan(items: Compensation[]): Promise<void> {
+  invalidateCache('santunan');
+  invalidateCache('cashTransactions');
   const client = getSheetsClient();
   if (!client) return;
 

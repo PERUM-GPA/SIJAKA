@@ -1,5 +1,5 @@
 import { DeathReport, DeathReportStatus, DeathReportHubungan } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore, cachedRead, invalidateCache } from './client.ts';
 import { getMemberById } from './anggota.ts';
 
 function formatDateTime(d = new Date()): string {
@@ -37,43 +37,45 @@ export async function getAllDeathReports(): Promise<DeathReport[]> {
     return [...memoryStore.getDeathReports()];
   }
 
-  try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.LAPORAN_KEMATIAN}!A2:Q`,
-    });
+  return cachedRead(
+    'deathReports',
+    async () => {
+      const res = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.LAPORAN_KEMATIAN}!A2:Q`,
+      });
 
-    const rows = res.data.values || [];
-    if (rows.length === 0) {
-      return [];
-    }
+      const rows = res.data.values || [];
+      if (rows.length === 0) {
+        return [];
+      }
 
-    const reports: DeathReport[] = rows.map((row) => ({
-      ID_Laporan: (row[0] || '').trim(),
-      ID_Anggota: (row[1] || '').trim(),
-      Tanggal_Lapor: (row[2] || '').trim(),
-      Pelapor: (row[3] || '').trim(),
-      Hubungan_Pelapor: (row[4] || 'Lainnya').trim() as DeathReportHubungan,
-      Waktu_Kematian: (row[5] || '').trim(),
-      Tempat_Kematian: (row[6] || '').trim(),
-      Penyebab_Kematian: (row[7] || '').trim() || undefined,
-      Dokumen_Pendukung: (row[8] || '').trim() || undefined,
-      Status: (row[9] || 'DIAJUKAN').trim() as DeathReportStatus,
-      Diverifikasi_Oleh: (row[10] || '').trim() || undefined,
-      Tanggal_Verifikasi: (row[11] || '').trim() || undefined,
-      Disetujui_Oleh: (row[12] || '').trim() || undefined,
-      Tanggal_Persetujuan: (row[13] || '').trim() || undefined,
-      Keterangan: (row[14] || '').trim() || undefined,
-      Tanggal_Dibuat: (row[15] || '').trim(),
-      Tanggal_Diperbarui: (row[16] || '').trim(),
-    }));
+      const reports: DeathReport[] = rows.map((row) => ({
+        ID_Laporan: (row[0] || '').trim(),
+        ID_Anggota: (row[1] || '').trim(),
+        Tanggal_Lapor: (row[2] || '').trim(),
+        Pelapor: (row[3] || '').trim(),
+        Hubungan_Pelapor: (row[4] || 'Lainnya').trim() as DeathReportHubungan,
+        Waktu_Kematian: (row[5] || '').trim(),
+        Tempat_Kematian: (row[6] || '').trim(),
+        Penyebab_Kematian: (row[7] || '').trim() || undefined,
+        Dokumen_Pendukung: (row[8] || '').trim() || undefined,
+        Status: (row[9] || 'DIAJUKAN').trim() as DeathReportStatus,
+        Diverifikasi_Oleh: (row[10] || '').trim() || undefined,
+        Tanggal_Verifikasi: (row[11] || '').trim() || undefined,
+        Disetujui_Oleh: (row[12] || '').trim() || undefined,
+        Tanggal_Persetujuan: (row[13] || '').trim() || undefined,
+        Keterangan: (row[14] || '').trim() || undefined,
+        Tanggal_Dibuat: (row[15] || '').trim(),
+        Tanggal_Diperbarui: (row[16] || '').trim(),
+      }));
 
-    memoryStore.setDeathReports(reports);
-    return reports;
-  } catch (error) {
-    console.error('Error fetching death reports from Google Sheets, using memory store:', error);
-    return [...memoryStore.getDeathReports()];
-  }
+      memoryStore.setDeathReports(reports);
+      return reports;
+    },
+    () => [...memoryStore.getDeathReports()],
+    15000
+  );
 }
 
 export async function getDeathReportById(id: string): Promise<DeathReport | null> {
@@ -132,6 +134,7 @@ export async function createDeathReport(input: {
   const reports = await getAllDeathReports();
   reports.push(newReport);
   memoryStore.setDeathReports(reports);
+  invalidateCache('deathReports');
 
   const client = getSheetsClient();
   if (client) {
@@ -287,6 +290,7 @@ export async function completeDeathReport(id: string): Promise<DeathReport> {
 }
 
 async function syncAllDeathReports(reports: DeathReport[]): Promise<void> {
+  invalidateCache('deathReports');
   const client = getSheetsClient();
   if (!client) return;
 

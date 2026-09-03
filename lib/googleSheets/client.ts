@@ -186,3 +186,59 @@ export const memoryStore = {
 export function resetMemoryStore(): void {
   memoryStore.reset();
 }
+
+// ---------------------------------------------------------
+// SMART READ-THROUGH CACHE & THROTTLING LAYER
+// ---------------------------------------------------------
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const readCache = new Map<string, CacheEntry<any>>();
+const inFlightRequests = new Map<string, Promise<any>>();
+
+export function invalidateCache(key?: string): void {
+  if (key) {
+    readCache.delete(key);
+  } else {
+    readCache.clear();
+  }
+}
+
+export async function cachedRead<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  fallback: () => T,
+  ttlMs: number = 10000
+): Promise<T> {
+  const cached = readCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < ttlMs) {
+    return cached.data;
+  }
+
+  // Deduplicate concurrent in-flight requests for the same key
+  if (inFlightRequests.has(key)) {
+    return inFlightRequests.get(key)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const data = await fetcher();
+      readCache.set(key, { data, timestamp: Date.now() });
+      return data;
+    } catch (error: any) {
+      console.warn(`[GoogleSheets] Falling back to memory cache for "${key}" due to:`, error?.message || error);
+      const fallbackData = fallback();
+      // Keep fallback in cache for 5 seconds to avoid spamming a rate-limited endpoint
+      readCache.set(key, { data: fallbackData, timestamp: Date.now() - ttlMs + 5000 });
+      return fallbackData;
+    } finally {
+      inFlightRequests.delete(key);
+    }
+  })();
+
+  inFlightRequests.set(key, promise);
+  return promise;
+}

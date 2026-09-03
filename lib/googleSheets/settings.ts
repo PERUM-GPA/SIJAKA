@@ -1,5 +1,5 @@
 import { Setting, AppSettings } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, memoryStore, cachedRead, invalidateCache } from './client.ts';
 
 export async function getAllSettings(): Promise<Setting[]> {
   const client = getSheetsClient();
@@ -7,30 +7,32 @@ export async function getAllSettings(): Promise<Setting[]> {
     return memoryStore.getSettings();
   }
 
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.SETTINGS}!A2:D`,
-    });
+  return cachedRead(
+    'settings',
+    async () => {
+      const response = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.SETTINGS}!A2:D`,
+      });
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      return memoryStore.getSettings();
-    }
+      const rows = response.data.values;
+      if (!rows || rows.length === 0) {
+        return memoryStore.getSettings();
+      }
 
-    const settings: Setting[] = rows.map((row) => ({
-      Key: row[0] || '',
-      Value: row[1] || '',
-      Keterangan: row[2] || '',
-      Tipe: (row[3] as 'string' | 'number' | 'boolean' | 'array') || 'string',
-    })).filter((s) => s.Key !== '');
+      const settings: Setting[] = rows.map((row) => ({
+        Key: row[0] || '',
+        Value: row[1] || '',
+        Keterangan: row[2] || '',
+        Tipe: (row[3] as 'string' | 'number' | 'boolean' | 'array') || 'string',
+      })).filter((s) => s.Key !== '');
 
-    memoryStore.setSettings(settings);
-    return settings;
-  } catch (error) {
-    console.error('Error fetching settings from Google Sheets, using memory fallback:', error);
-    return memoryStore.getSettings();
-  }
+      memoryStore.setSettings(settings);
+      return settings;
+    },
+    () => memoryStore.getSettings(),
+    30000 // Settings change rarely, 30s cache
+  );
 }
 
 export async function getParsedSettings(): Promise<AppSettings> {
@@ -67,6 +69,7 @@ export async function updateSetting(key: string, value: string): Promise<Setting
 
   settings[index] = updated;
   memoryStore.setSettings([...settings]);
+  invalidateCache('settings');
 
   const client = getSheetsClient();
   if (client) {

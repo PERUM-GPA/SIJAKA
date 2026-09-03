@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { User, SafeUser, UserRole, UserStatus } from '../../src/types/index.ts';
-import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore } from './client.ts';
+import { getSheetsClient, isGoogleSheetsConfigured, SHEET_NAMES, memoryStore, cachedRead, invalidateCache } from './client.ts';
 import { getMemberById } from './anggota.ts';
 
 export function toSafeUser(user: User): SafeUser {
@@ -23,42 +23,41 @@ export async function getAllUsers(): Promise<User[]> {
     return memoryStore.getUsers();
   }
 
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.USERS}!A2:H`,
-    });
+  return cachedRead(
+    'users',
+    async () => {
+      const response = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.USERS}!A2:H`,
+      });
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      return memoryStore.getUsers();
-    }
+      const rows = response.data.values;
+      if (!rows || rows.length === 0) {
+        return memoryStore.getUsers();
+      }
 
-    const users: User[] = rows.map((row) => {
-      const role = (row[4] as UserRole) || 'ANGGOTA';
+      const users: User[] = rows.map((row) => {
+        const role = (row[4] as UserRole) || 'ANGGOTA';
 
-      return {
-        ID_User: row[0] || '',
-        Nama: row[1] || '',
-        Username: row[2] || '',
-        Password: row[3] || '',
-        Role: role,
-        Status: (row[5] as UserStatus) || 'Aktif',
-        Tanggal_Dibuat: row[6] || '',
-        Terakhir_Login: row[7] || undefined,
-        MustChangePassword: role === 'ANGGOTA',
-      };
-    }).filter((u) => u.ID_User !== '');
+        return {
+          ID_User: row[0] || '',
+          Nama: row[1] || '',
+          Username: row[2] || '',
+          Password: row[3] || '',
+          Role: role,
+          Status: (row[5] as UserStatus) || 'Aktif',
+          Tanggal_Dibuat: row[6] || '',
+          Terakhir_Login: row[7] || undefined,
+          MustChangePassword: role === 'ANGGOTA',
+        };
+      }).filter((u) => u.ID_User !== '');
 
-    memoryStore.setUsers(users);
-    return users;
-  } catch (error: any) {
-    console.error('Error fetching users from Google Sheets, using memory fallback:', error);
-    if (isGoogleSheetsConfigured()) {
-      throw new Error(`Gagal membaca data dari Google Sheets (08_USERS): ${error?.message || error}`);
-    }
-    return memoryStore.getUsers();
-  }
+      memoryStore.setUsers(users);
+      return users;
+    },
+    () => memoryStore.getUsers(),
+    15000
+  );
 }
 
 export async function getAllSafeUsers(): Promise<SafeUser[]> {
@@ -177,6 +176,7 @@ export async function createUser(data: {
 
   const updatedUsers = [...users, newUser];
   memoryStore.setUsers(updatedUsers);
+  invalidateCache('users');
 
   return toSafeUser(newUser);
 }
@@ -189,6 +189,7 @@ export async function updateLastLogin(id: string): Promise<void> {
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   users[index].Terakhir_Login = now;
   memoryStore.setUsers([...users]);
+  invalidateCache('users');
 
   const client = getSheetsClient();
   if (client) {
@@ -241,6 +242,7 @@ export async function changeUserPassword(
   user.MustChangePassword = false;
   users[index] = user;
   memoryStore.setUsers([...users]);
+  invalidateCache('users');
 
   const client = getSheetsClient();
   if (client) {

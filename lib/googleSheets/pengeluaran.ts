@@ -1,5 +1,5 @@
 import { Expense, ExpenseCategory, ExpenseStatus, ExpensePaymentMethod } from '../../src/types/index.ts';
-import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore } from './client.ts';
+import { getSheetsClient, SHEET_NAMES, HEADERS, memoryStore, cachedRead, invalidateCache } from './client.ts';
 import { createCashTransaction } from './bukuKas.ts';
 
 function formatDateTime(d = new Date()): string {
@@ -37,42 +37,44 @@ export async function getAllExpenses(): Promise<Expense[]> {
     return [...memoryStore.getExpenses()];
   }
 
-  try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: `${SHEET_NAMES.PENGELUARAN}!A2:O`,
-    });
+  return cachedRead(
+    'expenses',
+    async () => {
+      const res = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET_NAMES.PENGELUARAN}!A2:O`,
+      });
 
-    const rows = res.data.values || [];
-    if (rows.length === 0) {
-      memoryStore.setExpenses([]);
-      return [];
-    }
+      const rows = res.data.values || [];
+      if (rows.length === 0) {
+        memoryStore.setExpenses([]);
+        return [];
+      }
 
-    const expenses: Expense[] = rows.map((row) => ({
-      ID_Pengeluaran: (row[0] || '').trim(),
-      Tanggal_Pengeluaran: (row[1] || '').trim(),
-      Kategori: (row[2] || 'Lainnya').trim() as ExpenseCategory,
-      Uraian: (row[3] || '').trim(),
-      Nominal: Number(row[4] || 0),
-      Metode_Pembayaran: (row[5] || 'Tunai').trim() as ExpensePaymentMethod,
-      Nomor_Bukti: (row[6] || '').trim() || undefined,
-      Bukti_Pengeluaran: (row[7] || '').trim() || undefined,
-      Diajukan_Oleh: (row[8] || '').trim(),
-      Disetujui_Oleh: (row[9] || '').trim() || undefined,
-      Tanggal_Persetujuan: (row[10] || '').trim() || undefined,
-      Status: (row[11] || 'DIAJUKAN').trim() as ExpenseStatus,
-      Keterangan: (row[12] || '').trim() || undefined,
-      Tanggal_Dibuat: (row[13] || '').trim(),
-      Tanggal_Diperbarui: (row[14] || '').trim(),
-    }));
+      const expenses: Expense[] = rows.map((row) => ({
+        ID_Pengeluaran: (row[0] || '').trim(),
+        Tanggal_Pengeluaran: (row[1] || '').trim(),
+        Kategori: (row[2] || 'Lainnya').trim() as ExpenseCategory,
+        Uraian: (row[3] || '').trim(),
+        Nominal: Number(row[4] || 0),
+        Metode_Pembayaran: (row[5] || 'Tunai').trim() as ExpensePaymentMethod,
+        Nomor_Bukti: (row[6] || '').trim() || undefined,
+        Bukti_Pengeluaran: (row[7] || '').trim() || undefined,
+        Diajukan_Oleh: (row[8] || '').trim(),
+        Disetujui_Oleh: (row[9] || '').trim() || undefined,
+        Tanggal_Persetujuan: (row[10] || '').trim() || undefined,
+        Status: (row[11] || 'DIAJUKAN').trim() as ExpenseStatus,
+        Keterangan: (row[12] || '').trim() || undefined,
+        Tanggal_Dibuat: (row[13] || '').trim(),
+        Tanggal_Diperbarui: (row[14] || '').trim(),
+      }));
 
-    memoryStore.setExpenses(expenses);
-    return expenses;
-  } catch (error) {
-    console.error('Error fetching expenses from Google Sheets, using memory store:', error);
-    return [...memoryStore.getExpenses()];
-  }
+      memoryStore.setExpenses(expenses);
+      return expenses;
+    },
+    () => [...memoryStore.getExpenses()],
+    15000
+  );
 }
 
 export async function getExpenseById(id: string): Promise<Expense | null> {
@@ -120,6 +122,7 @@ export async function createExpense(
   const expenses = await getAllExpenses();
   expenses.push(newExpense);
   memoryStore.setExpenses(expenses);
+  invalidateCache('expenses');
 
   const client = getSheetsClient();
   if (client) {
@@ -289,6 +292,7 @@ export async function payExpense(
 }
 
 async function syncAllExpenses(expenses: Expense[]): Promise<void> {
+  invalidateCache('expenses');
   const client = getSheetsClient();
   if (!client) return;
 
