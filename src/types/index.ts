@@ -421,6 +421,8 @@ export interface PublicDashboardMetrics {
   totalPemasukanBulanIni: number;
   totalPengeluaranBulanIni: number;
   saldoKas: number;
+  iuranBulanIni: number;
+  totalDonasiTerkumpul: number;
   distribusiRT: {
     rt06: number;
     rt07: number;

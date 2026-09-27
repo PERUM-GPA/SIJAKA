@@ -167,6 +167,18 @@ export function createApp() {
       const allFamilies = await getAllFamilies();
       const arrearsData = await calculateAllMembersArrears();
       const cashSummary = await getCashSummary();
+      const allCashTransactions = await getAllCashTransactions();
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+      const currentMonthPrefix = `${currentYear}-${currentMonth}`;
+
+      const validTransactions = allCashTransactions.filter((t) => t.Status === 'VALID');
+      const iuranBulanIni = validTransactions
+        .filter((t) => t.Sumber_Transaksi === 'IURAN' && t.Tanggal && t.Tanggal.startsWith(currentMonthPrefix))
+        .reduce((sum, t) => sum + (t.Kas_Masuk || 0), 0);
+      const totalDonasiTerkumpul = cashSummary.totalDonasiTerkumpul;
 
       const totalKK = allMembers.length;
       const kkAktif = allMembers.filter((m) => m.Status === 'Aktif').length;
@@ -196,6 +208,8 @@ export function createApp() {
           totalPemasukanBulanIni: cashSummary.pemasukanBulanIni,
           totalPengeluaranBulanIni: cashSummary.pengeluaranBulanIni,
           saldoKas: cashSummary.saldoKas,
+          iuranBulanIni,
+          totalDonasiTerkumpul,
           distribusiRT: {
             rt06,
             rt07,

@@ -153,7 +153,7 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
         </div>
 
         {/* Live Aggregated Statistics Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Card 1: Saldo Kas */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 shadow-lg backdrop-blur-xs space-y-2">
             <div className="flex items-center justify-between">
@@ -168,7 +168,7 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
             <p className="text-[11px] text-slate-400">Akumulasi penerimaan kas</p>
           </div>
 
-          {/* Card 2: Pemasukan Bulan Ini */}
+          {/* Card 2: Iuran Bulan Ini */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 shadow-lg backdrop-blur-xs space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">Iuran Terkumpul ({currentMonthName.split(' ')[0]})</span>
@@ -177,14 +177,28 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
               </div>
             </div>
             <p className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">
-              {isLoading ? '...' : formatRupiah(metrics?.totalPemasukanBulanIni || 0)}
+              {isLoading ? '...' : formatRupiah(metrics?.iuranBulanIni ?? 0)}
             </p>
             <p className="text-[11px] text-slate-400">
               {metrics?.pembayaranBulanIni || 0} dari {metrics?.kkAktif || 0} KK telah berpartisipasi
             </p>
           </div>
 
-          {/* Card 3: Total KK Terdaftar */}
+          {/* Card 3: Donasi / Sumbangan */}
+          <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 shadow-lg backdrop-blur-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-400">Donasi / Sumbangan</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                <HeartHandshake className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-xl sm:text-2xl font-black text-amber-300 font-mono tracking-tight">
+              {isLoading ? '...' : formatRupiah(metrics?.totalDonasiTerkumpul || 0)}
+            </p>
+            <p className="text-[11px] text-slate-400">Dana sosial sukarela jamaah</p>
+          </div>
+
+          {/* Card 4: Total KK Terdaftar */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 shadow-lg backdrop-blur-xs space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">Kepesertaan KK</span>
@@ -200,15 +214,15 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
             </p>
           </div>
 
-          {/* Card 4: Jiwa Terlindungi */}
+          {/* Card 5: Jiwa Terlindungi */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 shadow-lg backdrop-blur-xs space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">Total Jiwa Terlindungi</span>
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                <HeartHandshake className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-black text-amber-300 tracking-tight">
+            <p className="text-xl sm:text-2xl font-black text-teal-300 tracking-tight">
               {isLoading ? '...' : `${metrics?.keluargaTerlindungi || 0} Jiwa`}
             </p>
             <p className="text-[11px] text-slate-400">Kepala keluarga & seluruh anggota KK</p>
@@ -296,13 +310,21 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-700/60 space-y-1">
-                    <span className="text-xs text-slate-400 font-medium">Pemasukan Bulan Ini</span>
+                    <span className="text-xs text-slate-400 font-medium">Iuran Bulan Ini</span>
                     <p className="text-lg font-bold text-emerald-400 font-mono">
-                      {formatRupiah(metrics?.totalPemasukanBulanIni || 0)}
+                      {formatRupiah(metrics?.iuranBulanIni ?? 0)}
                     </p>
                     <span className="text-[10px] text-slate-500 block">Iuran terverifikasi</span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-700/60 space-y-1">
+                    <span className="text-xs text-slate-400 font-medium">Donasi / Sumbangan</span>
+                    <p className="text-lg font-bold text-amber-400 font-mono">
+                      {formatRupiah(metrics?.totalDonasiTerkumpul || 0)}
+                    </p>
+                    <span className="text-[10px] text-slate-500 block">Dana sosial terbuka</span>
                   </div>
 
                   <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-700/60 space-y-1">
