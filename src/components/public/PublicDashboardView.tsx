@@ -455,8 +455,7 @@ export function PublicDashboardView({ onOpenLogin }: PublicDashboardViewProps) {
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-xs sm:text-sm text-slate-300 space-y-2">
-                <p className="font-bold text-emerald-300">Prinsip 1 KK = 1 Kepesertaan Terlindungi</p>
+              <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-xs sm:text-sm text-slate-300">
                 <p className="text-slate-300 leading-relaxed text-xs">
                   Setiap Kartu Keluarga yang terdaftar mencakup seluruh anggota keluarga yang tinggal dalam satu rumah
                   (Kepala Keluarga, Pasangan, Anak, Orang Tua, dan Tanggungan). Pelayanan perlindungan duka berlaku utuh untuk seluruh anggota keluarga tercatat.
