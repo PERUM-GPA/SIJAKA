@@ -10,6 +10,7 @@ import {
   Compensation,
   CashTransaction,
   Expense,
+  Donation,
 } from '../../src/types/index.ts';
 import {
   getInitialMembers,
@@ -35,6 +36,7 @@ let memoryDeathReports: DeathReport[] = getInitialDeathReports();
 let memorySantunan: Compensation[] = getInitialSantunan();
 let memoryCashTransactions: CashTransaction[] = getInitialCashTransactions();
 let memoryExpenses: Expense[] = getInitialExpenses();
+let memoryDonations: Donation[] = [];
 
 export const SHEET_NAMES = {
   ANGGOTA: '01_ANGGOTA',
@@ -47,6 +49,7 @@ export const SHEET_NAMES = {
   USERS: '08_USERS',
   LOG_AKTIVITAS: '09_LOG_AKTIVITAS',
   SETTINGS: '10_SETTINGS',
+  DONASI: '11_DONASI',
 } as const;
 
 export const HEADERS = {
@@ -93,6 +96,10 @@ export const HEADERS = {
   ],
   [SHEET_NAMES.SETTINGS]: [
     'Key', 'Value', 'Keterangan', 'Tipe'
+  ],
+  [SHEET_NAMES.DONASI]: [
+    'ID_Donasi', 'Tanggal', 'Donatur', 'Nominal', 'Metode', 'Keterangan',
+    'Status', 'Diverifikasi_Oleh', 'Tanggal_Verifikasi', 'ID_Kas', 'Tanggal_Dibuat', 'Tanggal_Diubah'
   ],
 };
 
@@ -156,6 +163,8 @@ export const memoryStore = {
   setCashTransactions: (transactions: CashTransaction[]) => { memoryCashTransactions = transactions; },
   getExpenses: () => memoryExpenses,
   setExpenses: (expenses: Expense[]) => { memoryExpenses = expenses; },
+  getDonations: () => memoryDonations,
+  setDonations: (donations: Donation[]) => { memoryDonations = donations; },
   getUsers: () => memoryUsers,
   setUsers: (users: User[]) => { memoryUsers = users; },
   getSettings: () => memorySettings,
@@ -180,6 +189,7 @@ export const memoryStore = {
     memorySantunan = getInitialSantunan();
     memoryCashTransactions = getInitialCashTransactions();
     memoryExpenses = getInitialExpenses();
+    memoryDonations = [];
   },
 };
 

@@ -40,6 +40,11 @@ export type ActionType =
   | 'CREATE_PENGELUARAN'
   | 'APPROVE_PENGELUARAN'
   | 'PAY_PENGELUARAN'
+  | 'CREATE_DONASI'
+  | 'UPDATE_DONASI'
+  | 'VERIFY_DONASI'
+  | 'ACCEPT_DONASI'
+  | 'REJECT_DONASI'
   | 'CREATE_BUKU_KAS'
   | 'UPDATE_BUKU_KAS'
   | 'CANCEL_BUKU_KAS'
@@ -207,7 +212,7 @@ export type Santunan = Compensation;
 
 // 06_BUKU_KAS
 export type CashTransactionJenis = 'KAS_MASUK' | 'KAS_KELUAR';
-export type CashTransactionSumber = 'IURAN' | 'SANTUNAN' | 'PENGELUARAN' | 'PENYESUAIAN' | 'LAINNYA';
+export type CashTransactionSumber = 'IURAN' | 'SANTUNAN' | 'PENGELUARAN' | 'PENYESUAIAN' | 'DONASI' | 'LAINNYA';
 export type CashTransactionStatus = 'VALID' | 'DIBATALKAN';
 export type CashTransactionMetode = 'Tunai' | 'Transfer';
 
@@ -239,6 +244,7 @@ export interface CashSummary {
   totalIuranTerkumpul: number;
   totalSantunanTersalur: number;
   totalPengeluaranOperasional: number;
+  totalDonasiTerkumpul?: number;
   pemasukanBulanIni: number;
   pengeluaranBulanIni: number;
   totalTransaksiValid: number;
@@ -276,6 +282,25 @@ export interface Expense {
   // Enriched
   namaDiajukan?: string;
   namaDisetujui?: string;
+}
+
+// 11_DONASI
+export type DonationStatus = 'DIAJUKAN' | 'DIVERIFIKASI' | 'DITERIMA' | 'DITOLAK';
+export type DonationMethod = 'Tunai' | 'Transfer' | 'Lainnya';
+
+export interface Donation {
+  ID_Donasi: string;
+  Tanggal: string; // YYYY-MM-DD
+  Donatur: string;
+  Nominal: number;
+  Metode: DonationMethod;
+  Keterangan?: string;
+  Status: DonationStatus;
+  Diverifikasi_Oleh?: string;
+  Tanggal_Verifikasi?: string;
+  ID_Kas?: string;
+  Tanggal_Dibuat: string;
+  Tanggal_Diubah: string;
 }
 
 // 08_USERS
@@ -377,6 +402,7 @@ export interface DashboardMetrics {
   saldoKas?: number;
   totalPemasukan?: number;
   totalPengeluaran?: number;
+  totalDonasiTerkumpul?: number;
   totalLaporanKematian?: number;
   laporanPending?: number;
   santunanPending?: number;

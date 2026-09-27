@@ -15,6 +15,7 @@ import {
   BookOpen,
   Receipt,
   HeartHandshake,
+  HandHeart,
   Wallet,
   FileText,
   ArrowDownRight,
@@ -370,6 +371,19 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
                   <div className="flex items-center space-x-2.5">
                     <Receipt className="w-4 h-4 text-amber-600" />
                     <span>Pengeluaran Operasional</span>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              )}
+
+              {['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user?.Role || '') && (
+                <button
+                  onClick={() => onNavigate('donasi')}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 text-left flex items-center justify-between text-xs font-medium text-slate-700 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <HandHeart className="w-4 h-4 text-emerald-600" />
+                    <span>Dana Sumbangan & Infaq</span>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                 </button>

@@ -76,6 +76,15 @@ import {
   payExpense,
 } from './lib/googleSheets/pengeluaran.ts';
 import {
+  getAllDonations,
+  getDonationById,
+  createDonation,
+  updateDonation,
+  verifyDonation,
+  acceptDonation,
+  getDonationsSummary,
+} from './lib/googleSheets/donasi.ts';
+import {
   getFinancialSummaryReport,
   getCashbookReport,
   getIuranReport,
@@ -105,6 +114,7 @@ export function createApp() {
         req.url.startsWith('/compensations') ||
         req.url.startsWith('/cash-transactions') ||
         req.url.startsWith('/expenses') ||
+        req.url.startsWith('/donasi') ||
         req.url.startsWith('/users') ||
         req.url.startsWith('/settings') ||
         req.url.startsWith('/audit-logs') ||
@@ -824,6 +834,7 @@ export function createApp() {
         metrics.totalKas = cashSummary.saldoKas;
         metrics.totalPemasukan = cashSummary.totalPemasukan;
         metrics.totalPengeluaran = cashSummary.totalPengeluaran;
+        metrics.totalDonasiTerkumpul = cashSummary.totalDonasiTerkumpul || 0;
         metrics.totalLaporanKematian = deathReports.length;
         metrics.laporanPending = deathReports.filter((r) => r.Status === 'DIAJUKAN' || r.Status === 'DIVERIFIKASI').length;
         metrics.santunanPending = santunanList.filter((s) => s.Status_Persetujuan === 'MENUNGGU' || (s.Status_Persetujuan === 'DISETUJUI' && !s.Tanggal_Pencairan)).length;
@@ -2598,6 +2609,230 @@ export function createApp() {
     } catch (error: any) {
       console.error('Error paying expense:', error);
       res.status(400).json({ success: false, message: error.message || 'Gagal memproses pembayaran pengeluaran.' });
+    }
+  });
+
+  // ------------------------------------------
+  // 11_DONASI ROUTES (Dana Sumbangan)
+  // ------------------------------------------
+  app.get('/api/donasi/summary', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (_req: AuthRequest, res: Response) => {
+    try {
+      const summary = await getDonationsSummary();
+      res.json({ success: true, data: summary });
+    } catch (error) {
+      console.error('Error fetching donations summary:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat ringkasan dana sumbangan.' });
+    }
+  });
+
+  app.get('/api/donasi', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      let donations = await getAllDonations();
+
+      const search = (req.query.search as string || '').toLowerCase().trim();
+      const statusFilter = req.query.status as string;
+      const metodeFilter = req.query.metode as string;
+      const dariTanggal = req.query.dariTanggal as string;
+      const sampaiTanggal = req.query.sampaiTanggal as string;
+
+      if (search) {
+        donations = donations.filter(
+          (d) =>
+            d.ID_Donasi.toLowerCase().includes(search) ||
+            d.Donatur.toLowerCase().includes(search) ||
+            (d.Keterangan && d.Keterangan.toLowerCase().includes(search)) ||
+            (d.ID_Kas && d.ID_Kas.toLowerCase().includes(search)) ||
+            (d.Diverifikasi_Oleh && d.Diverifikasi_Oleh.toLowerCase().includes(search))
+        );
+      }
+
+      if (statusFilter && statusFilter !== 'ALL') {
+        donations = donations.filter((d) => d.Status === statusFilter);
+      }
+
+      if (metodeFilter && metodeFilter !== 'ALL') {
+        donations = donations.filter((d) => d.Metode === metodeFilter);
+      }
+
+      if (dariTanggal) {
+        donations = donations.filter((d) => d.Tanggal >= dariTanggal);
+      }
+
+      if (sampaiTanggal) {
+        donations = donations.filter((d) => d.Tanggal <= sampaiTanggal);
+      }
+
+      // Sort by Tanggal desc, ID_Donasi desc
+      donations.sort((a, b) => {
+        const cmp = b.Tanggal.localeCompare(a.Tanggal);
+        return cmp !== 0 ? cmp : b.ID_Donasi.localeCompare(a.ID_Donasi);
+      });
+
+      const page = parseInt(req.query.page as string, 10) || 1;
+      const limit = parseInt(req.query.limit as string, 10) || 10;
+      const total = donations.length;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const paginated = donations.slice((page - 1) * limit, page * limit);
+
+      res.json({
+        success: true,
+        data: paginated,
+        pagination: { total, page, limit, totalPages },
+      });
+    } catch (error) {
+      console.error('Error fetching donations:', error);
+      res.status(500).json({ success: false, message: 'Gagal memuat data donasi.' });
+    }
+  });
+
+  app.get('/api/donasi/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const donation = await getDonationById(id);
+
+      if (!donation) {
+        res.status(404).json({ success: false, message: `Donasi ${id} tidak ditemukan.` });
+        return;
+      }
+
+      res.json({ success: true, data: donation });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Gagal memuat detail donasi.' });
+    }
+  });
+
+  app.post('/api/donasi', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { Tanggal, Donatur, Nominal, Metode, Keterangan } = req.body;
+
+      if (!Donatur || !Nominal) {
+        res.status(400).json({ success: false, message: 'Nama Donatur dan Nominal wajib diisi.' });
+        return;
+      }
+
+      const num = Number(Nominal);
+      if (isNaN(num) || num <= 0) {
+        res.status(400).json({ success: false, message: 'Nominal donasi harus lebih besar dari 0.' });
+        return;
+      }
+
+      const newDonation = await createDonation({
+        Tanggal,
+        Donatur,
+        Nominal: num,
+        Metode,
+        Keterangan,
+      });
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'CREATE_DONASI',
+        Modul: 'DONASI',
+        Record_ID: newDonation.ID_Donasi,
+        Deskripsi: `Mencatat pengajuan dana sumbangan ${newDonation.ID_Donasi} dari ${newDonation.Donatur} sebesar Rp ${num.toLocaleString('id-ID')}`,
+        Status: 'SUCCESS',
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Pengajuan sumbangan ${newDonation.ID_Donasi} berhasil dicatat (Status: DIAJUKAN).`,
+        data: newDonation,
+      });
+    } catch (error: any) {
+      console.error('Error creating donation:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal mencatat donasi.' });
+    }
+  });
+
+  app.put('/api/donasi/:id', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updated = await updateDonation(id, updates);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'UPDATE_DONASI',
+        Modul: 'DONASI',
+        Record_ID: id,
+        Deskripsi: `Memperbarui data sumbangan ${id}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Data sumbangan ${id} berhasil diperbarui.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memperbarui donasi.' });
+    }
+  });
+
+  app.post('/api/donasi/:id/verify', requireAuth, requireRole(['ADMIN', 'BENDAHARA', 'PENGURUS']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { status, keterangan } = req.body;
+
+      if (!status || !['DIVERIFIKASI', 'DITOLAK'].includes(status)) {
+        res.status(400).json({ success: false, message: 'Status verifikasi harus DIVERIFIKASI atau DITOLAK.' });
+        return;
+      }
+
+      const verified = await verifyDonation(id, user.Nama, status, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'VERIFY_DONASI',
+        Modul: 'DONASI',
+        Record_ID: id,
+        Deskripsi: `Verifikasi sumbangan ${id} -> ${status}${keterangan ? ` (${keterangan})` : ''}`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Sumbangan ${id} berhasil diproses verifikasi dengan status ${status}.`,
+        data: verified,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses verifikasi sumbangan.' });
+    }
+  });
+
+  app.post('/api/donasi/:id/accept', requireAuth, requireRole(['ADMIN', 'BENDAHARA']), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { keterangan } = req.body;
+
+      const result = await acceptDonation(id, user.Nama, keterangan);
+
+      await createActivityLog({
+        ID_User: user.ID_User,
+        Nama_User: user.Nama,
+        Aksi: 'ACCEPT_DONASI',
+        Modul: 'DONASI',
+        Record_ID: id,
+        Deskripsi: `Penerimaan dana sumbangan ${id} dari ${result.donation.Donatur} sebesar Rp ${result.donation.Nominal.toLocaleString('id-ID')} masuk ke Buku Kas (${result.cashTransactionId})`,
+        Status: 'SUCCESS',
+      });
+
+      res.json({
+        success: true,
+        message: `Dana sumbangan ${id} berhasil diterima dan otomatis tercatat sebagai KAS MASUK di Buku Kas (${result.cashTransactionId}).`,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error('Error accepting donation:', error);
+      res.status(400).json({ success: false, message: error.message || 'Gagal memproses penerimaan sumbangan.' });
     }
   });
 

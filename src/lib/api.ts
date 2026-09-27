@@ -15,6 +15,7 @@ import {
   CashTransaction,
   CashSummary,
   Expense,
+  Donation,
 } from '../types/index.ts';
 
 const TOKEN_KEY = 'sijaka_auth_token';
@@ -605,6 +606,75 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+  },
+
+  donasi: {
+    list: (params?: {
+      search?: string;
+      status?: string;
+      metode?: string;
+      dariTanggal?: string;
+      sampaiTanggal?: string;
+      page?: number;
+      limit?: number;
+    }) => {
+      const query = new URLSearchParams();
+      if (params?.search) query.set('search', params.search);
+      if (params?.status) query.set('status', params.status);
+      if (params?.metode) query.set('metode', params.metode);
+      if (params?.dariTanggal) query.set('dariTanggal', params.dariTanggal);
+      if (params?.sampaiTanggal) query.set('sampaiTanggal', params.sampaiTanggal);
+      if (params?.page) query.set('page', params.page.toString());
+      if (params?.limit) query.set('limit', params.limit.toString());
+      return request<{
+        success: boolean;
+        data: Donation[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(`/api/donasi?${query.toString()}`);
+    },
+    get: (id: string) => request<{ success: boolean; data: Donation }>(`/api/donasi/${id}`),
+    create: (data: {
+      Tanggal?: string;
+      Donatur: string;
+      Nominal: number;
+      Metode?: string;
+      Keterangan?: string;
+    }) =>
+      request<{ success: boolean; message: string; data: Donation }>('/api/donasi', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, updates: Partial<Donation>) =>
+      request<{ success: boolean; message: string; data: Donation }>(`/api/donasi/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      }),
+    verify: (id: string, data: { status: 'DIVERIFIKASI' | 'DITOLAK'; keterangan?: string }) =>
+      request<{ success: boolean; message: string; data: Donation }>(`/api/donasi/${id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    accept: (id: string, data?: { keterangan?: string }) =>
+      request<{
+        success: boolean;
+        message: string;
+        data: { donation: Donation; cashTransactionId: string };
+      }>(`/api/donasi/${id}/accept`, {
+        method: 'POST',
+        body: JSON.stringify(data || {}),
+      }),
+    summary: () =>
+      request<{
+        success: boolean;
+        data: {
+          totalDonasi: number;
+          totalNominalDiterima: number;
+          totalDiajukan: number;
+          totalDiverifikasi: number;
+          totalDiterima: number;
+          totalDitolak: number;
+        };
+      }>('/api/donasi/summary'),
   },
 
   users: {

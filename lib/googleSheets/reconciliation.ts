@@ -11,6 +11,7 @@ import { getAllCashTransactions, getCashSummary } from './bukuKas.ts';
 import { getAllContributions } from './iuran.ts';
 import { getAllSantunan } from './santunan.ts';
 import { getAllExpenses } from './pengeluaran.ts';
+import { getAllDonations } from './donasi.ts';
 
 export interface AnomalyItem {
   id: string;
@@ -49,6 +50,7 @@ export interface ReconciliationReport {
   sourcesBreakdown: {
     kasMasuk: {
       iuran: { count: number; total: number };
+      donasi?: { count: number; total: number };
       penyesuaian: { count: number; total: number };
       lainnya: { count: number; total: number };
       total: number;
@@ -88,11 +90,12 @@ export interface ReconciliationReport {
  * Runs complete financial reconciliation and integrity checks
  */
 export async function runFinancialReconciliation(): Promise<ReconciliationReport> {
-  const [cashTx, contributions, santunanList, expenses, summary] = await Promise.all([
+  const [cashTx, contributions, santunanList, expenses, donations, summary] = await Promise.all([
     getAllCashTransactions(),
     getAllContributions(),
     getAllSantunan(),
     getAllExpenses(),
+    getAllDonations(),
     getCashSummary(),
   ]);
 
@@ -107,6 +110,9 @@ export async function runFinancialReconciliation(): Promise<ReconciliationReport
 
   const expenseMap = new Map<string, typeof expenses[0]>();
   expenses.forEach((e) => expenseMap.set(e.ID_Pengeluaran, e));
+
+  const donasiMap = new Map<string, typeof donations[0]>();
+  donations.forEach((d) => donasiMap.set(d.ID_Donasi, d));
 
   // 1. Calculate Ledger Mathematical Totals
   let calculatedMasuk = 0;
@@ -132,6 +138,7 @@ export async function runFinancialReconciliation(): Promise<ReconciliationReport
   const sourcesBreakdown = {
     kasMasuk: {
       iuran: { count: 0, total: 0 },
+      donasi: { count: 0, total: 0 },
       penyesuaian: { count: 0, total: 0 },
       lainnya: { count: 0, total: 0 },
       total: 0,
@@ -151,6 +158,9 @@ export async function runFinancialReconciliation(): Promise<ReconciliationReport
       if (tx.Sumber_Transaksi === 'IURAN') {
         sourcesBreakdown.kasMasuk.iuran.count++;
         sourcesBreakdown.kasMasuk.iuran.total += tx.Kas_Masuk || 0;
+      } else if (tx.Sumber_Transaksi === 'DONASI') {
+        sourcesBreakdown.kasMasuk.donasi.count++;
+        sourcesBreakdown.kasMasuk.donasi.total += tx.Kas_Masuk || 0;
       } else if (tx.Sumber_Transaksi === 'PENYESUAIAN') {
         sourcesBreakdown.kasMasuk.penyesuaian.count++;
         sourcesBreakdown.kasMasuk.penyesuaian.total += tx.Kas_Masuk || 0;
@@ -289,6 +299,17 @@ export async function runFinancialReconciliation(): Promise<ReconciliationReport
         description: `Transaksi Kas ${tx.ID_Transaksi} mereferensikan Pengeluaran ${tx.ID_Sumber} yang tidak ditemukan.`,
         recommendation: 'Periksa data Pengeluaran yang berelasi.',
       });
+    } else if (tx.Sumber_Transaksi === 'DONASI' && !donasiMap.has(tx.ID_Sumber)) {
+      orphanReferences++;
+      anomalies.push({
+        id: `ANOMALY_2_${tx.ID_Transaksi}`,
+        type: 'ERROR',
+        category: 'ORPHAN_REFERENCE',
+        transactionId: tx.ID_Transaksi,
+        referenceId: tx.ID_Sumber,
+        description: `Transaksi Kas ${tx.ID_Transaksi} mereferensikan Donasi ${tx.ID_Sumber} yang tidak ditemukan.`,
+        recommendation: 'Periksa data Donasi yang berelasi.',
+      });
     }
   });
 
@@ -332,7 +353,7 @@ export async function runFinancialReconciliation(): Promise<ReconciliationReport
   const sourceKeys = new Set<string>();
   let duplicateSources = 0;
   validTx.forEach((tx) => {
-    if (['IURAN', 'SANTUNAN', 'PENGELUARAN'].includes(tx.Sumber_Transaksi) && tx.ID_Sumber) {
+    if (['IURAN', 'SANTUNAN', 'PENGELUARAN', 'DONASI'].includes(tx.Sumber_Transaksi) && tx.ID_Sumber) {
       const key = `${tx.Sumber_Transaksi}:${tx.ID_Sumber}`;
       if (sourceKeys.has(key)) {
         duplicateSources++;

@@ -15,6 +15,7 @@ import {
   Building2,
   ChevronRight,
   Globe,
+  HandHeart,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { UserRole } from '../../types/index.ts';
@@ -32,6 +33,7 @@ export type ActiveTab =
   | 'santunan'
   | 'buku-kas'
   | 'pengeluaran'
+  | 'donasi'
   | 'laporan'
   | 'users'
   | 'logs'
@@ -116,6 +118,12 @@ export function Sidebar({
       id: 'pengeluaran',
       label: 'Pengeluaran',
       icon: Receipt,
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS'],
+    },
+    {
+      id: 'donasi',
+      label: 'Dana Sumbangan',
+      icon: HandHeart,
       allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS'],
     },
     {

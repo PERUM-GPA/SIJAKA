@@ -345,6 +345,7 @@ export async function getCashSummary(): Promise<CashSummary> {
   let totalIuranTerkumpul = 0;
   let totalSantunanTersalur = 0;
   let totalPengeluaranOperasional = 0;
+  let totalDonasiTerkumpul = 0;
   let pemasukanBulanIni = 0;
   let pengeluaranBulanIni = 0;
 
@@ -356,6 +357,9 @@ export async function getCashSummary(): Promise<CashSummary> {
 
     if (t.Sumber_Transaksi === 'IURAN') {
       totalIuranTerkumpul += masuk;
+    }
+    if (t.Sumber_Transaksi === 'DONASI') {
+      totalDonasiTerkumpul += masuk;
     }
     if (t.Sumber_Transaksi === 'SANTUNAN') {
       totalSantunanTersalur += keluar;
@@ -379,6 +383,7 @@ export async function getCashSummary(): Promise<CashSummary> {
     totalIuranTerkumpul,
     totalSantunanTersalur,
     totalPengeluaranOperasional,
+    totalDonasiTerkumpul,
     pemasukanBulanIni,
     pengeluaranBulanIni,
     totalTransaksiValid: valid.length,

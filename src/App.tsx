@@ -21,6 +21,7 @@ import { KematianListView } from './components/kematian/KematianListView.tsx';
 import { SantunanListView } from './components/santunan/SantunanListView.tsx';
 import { BukuKasView } from './components/bukuKas/BukuKasView.tsx';
 import { PengeluaranListView } from './components/pengeluaran/PengeluaranListView.tsx';
+import { DonasiListView } from './components/donasi/DonasiListView.tsx';
 import { LaporanMainView } from './components/reports/LaporanMainView.tsx';
 import { UsersView } from './components/users/UsersView.tsx';
 import { LogsView } from './components/logs/LogsView.tsx';
@@ -50,7 +51,7 @@ function MainApp() {
     if (user) {
       // Role guards
       if (user.Role === 'ANGGOTA') {
-        if (['users', 'settings', 'logs', 'buku-kas', 'pengeluaran'].includes(activeTab)) {
+        if (['users', 'settings', 'logs', 'buku-kas', 'pengeluaran', 'donasi'].includes(activeTab)) {
           setActiveTab('dashboard');
         }
       }
@@ -190,6 +191,12 @@ function MainApp() {
           return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
         }
         return <PengeluaranListView />;
+
+      case 'donasi':
+        if (!['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user.Role)) {
+          return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
+        }
+        return <DonasiListView />;
 
       case 'laporan':
         if (!['ADMIN', 'BENDAHARA', 'PENGURUS'].includes(user.Role)) {
