@@ -790,4 +790,24 @@ export const api = {
         keyConfigured: boolean;
       }>('/api/status'),
   },
+
+  assistant: {
+    chat: (payload: { message: string; conversationId?: string }) =>
+      request<{
+        success: boolean;
+        data: {
+          message: string;
+          category: 'GENERAL' | 'NAVIGATION' | 'SELF_DATA' | 'HELP' | 'REDIRECT';
+          suggestedActions: Array<{
+            label: string;
+            action: 'NAVIGATE' | 'VIEW_IURAN' | 'VIEW_KELUARGA' | 'INFO' | 'OPEN_MODAL';
+            target?: string;
+          }>;
+        };
+        message?: string;
+      }>('/api/assistant/chat', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+  },
 };

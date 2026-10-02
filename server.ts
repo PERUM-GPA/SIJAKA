@@ -96,6 +96,8 @@ import { runFinancialReconciliation } from './lib/googleSheets/reconciliation.ts
 import * as XLSX from 'xlsx';
 import { isGoogleSheetsConfigured } from './lib/googleSheets/client.ts';
 import { Member, DashboardMetrics } from './src/types/index.ts';
+import { processAssistantChat } from './server/assistant/service.ts';
+import { AssistantChatRequest } from './server/assistant/types.ts';
 
 export function createApp() {
   const app = express();
@@ -3308,6 +3310,42 @@ export function createApp() {
     } catch (error: any) {
       console.error('Error exporting Excel:', error);
       res.status(500).json({ success: false, message: error.message || 'Gagal mengekspor laporan ke Excel.' });
+    }
+  });
+
+  // ------------------------------------------
+  // ASISTEN SIJAKA (PHASE 1 - BACKEND CHAT)
+  // ------------------------------------------
+  app.post('/api/assistant/chat', requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { message, conversationId } = req.body || {};
+
+      if (!message || typeof message !== 'string') {
+        res.status(400).json({
+          success: false,
+          message: 'Pesan chat wajib diisi dengan tipe string.',
+        });
+        return;
+      }
+
+      const chatRequest: AssistantChatRequest = {
+        message,
+        conversationId: typeof conversationId === 'string' ? conversationId : undefined,
+      };
+
+      const result = await processAssistantChat(user, chatRequest);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error('Error in /api/assistant/chat:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Terjadi kesalahan pada layanan Asisten SIJAKA.',
+      });
     }
   });
 

@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Globe,
   HandHeart,
+  Bot,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { UserRole } from '../../types/index.ts';
@@ -23,6 +24,7 @@ import { UserRole } from '../../types/index.ts';
 export type ActiveTab =
   | 'dashboard'
   | 'public-preview'
+  | 'asisten'
   | 'anggota'
   | 'anggota-tambah'
   | 'anggota-detail'
@@ -70,6 +72,13 @@ export function Sidebar({
       label: 'Dashboard',
       icon: LayoutDashboard,
       allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
+    },
+    {
+      id: 'asisten',
+      label: 'Asisten SIJAKA',
+      icon: Bot,
+      allowedRoles: ['ADMIN', 'BENDAHARA', 'PENGURUS', 'ANGGOTA'],
+      badge: 'Bantuan',
     },
     {
       id: 'public-preview',

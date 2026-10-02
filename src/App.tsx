@@ -26,6 +26,7 @@ import { LaporanMainView } from './components/reports/LaporanMainView.tsx';
 import { UsersView } from './components/users/UsersView.tsx';
 import { LogsView } from './components/logs/LogsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
+import { AssistantSIJAKA } from './components/assistant/AssistantSIJAKA.tsx';
 import { api } from './lib/api.ts';
 
 function MainApp() {
@@ -111,6 +112,9 @@ function MainApp() {
     switch (activeTab) {
       case 'dashboard':
         return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
+
+      case 'asisten':
+        return <AssistantSIJAKA onNavigate={(tab) => setActiveTab(tab)} />;
 
       case 'public-preview':
         return <PublicDashboardView onOpenLogin={() => {}} />;
